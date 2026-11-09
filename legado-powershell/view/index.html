@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPARK — Sistema de Programação, Acompanhamento de Rotas e KPIs</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#12244A">
+<link rel="stylesheet" href="css/vendor/leaflet.css" />
+<link rel="stylesheet" href="css/vendor/MarkerCluster.css" />
+<link rel="stylesheet" href="css/styles.css?v=3.16.3">
+<script>try{ if(localStorage.getItem("spark_tema")==="dark") document.documentElement.setAttribute("data-tema","dark"); }catch(e){}</script>
+</head>
+<body>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<div id="bootLoading" style="min-height:100vh; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px;">Carregando SPARK…</div>
+
+<div id="loginScreen" class="hidden">
+  <!-- Ilustração original (torres de transmissão + linhão ao entardecer) —
+       clima parecido com a arte de campanha que o Mario mandou de
+       referência, mas desenhada do zero aqui: sem logo, sem texto de
+       campanha, só silhuetas de torre/linhão na paleta já usada no
+       sistema. Pensada pra combinar com o glassmorphism do card por cima. -->
+  <img class="login-bg-img" src="assets/login-spark.jpg" alt="" aria-hidden="true">
+  <div class="login-card">
+    <div class="login-brand">
+      <svg viewBox="0 0 100 100" aria-label="SPARK">
+        <defs><linearGradient id="sparkGradLogin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFB020"/><stop offset="1" stop-color="#F37020"/></linearGradient></defs>
+        <path d="M8 100 L50 0 L92 100" fill="none" stroke="#1F1F4C" stroke-width="17" stroke-linejoin="miter"/>
+        <path d="M62 0 L12 56 H42 L32 100 L90 36 H58 Z" transform="translate(16.3 33) scale(0.67)" fill="url(#sparkGradLogin)" stroke="#FFFFFF" stroke-width="9" stroke-linejoin="round" paint-order="stroke"/>
+      </svg>
+      <div>
+        <div class="login-brand-name">SPARK</div>
+        <div class="login-brand-sub">Sistema de Programação, Acompanhamento de Rotas e KPIs</div>
+      </div>
+    </div>
+    <div id="loginTitulo"><h2>Entrar</h2>
+    <p class="sub">Use seu e-mail cadastrado e sua senha.</p></div>
+    <div id="loginErrorBox"></div>
+    <form id="loginForm" onsubmit="return onLoginSubmit(event)">
+      <div class="field">
+        <label>E-mail</label>
+        <input type="email" id="loginEmail" autocomplete="username" required placeholder="voce@energisa.com.br">
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <input type="password" id="loginSenha" autocomplete="current-password" required placeholder="••••••">
+      </div>
+      <button type="submit" class="btn btn-primary" id="loginBtn">Entrar</button>
+      <div id="loginProgress" class="login-progress hidden" role="status" aria-live="polite">
+        <div class="login-progress-txt" id="loginProgressTxt">Validando login…</div>
+        <div class="login-progress-bar"><span></span></div>
+      </div>
+      <a href="#" class="login-link" id="loginSolicitarBtn" onclick="mostrarSolicitarCadastro(); return false;">Solicitar cadastro</a>
+    </form>
+    <form id="solicitarForm" class="hidden" onsubmit="return onSolicitarCadastro(event)">
+      <h2 style="margin-top:2px;">Solicitar cadastro</h2>
+      <p class="sub">Informe seus dados e escolha sua senha. Um administrador vai analisar o pedido e liberar o seu acesso; depois é só entrar com este e-mail e esta senha.</p>
+      <div id="solicitarMsg"></div>
+      <div class="field">
+        <label>Nome</label>
+        <input type="text" id="solicitarNome" autocomplete="name" maxlength="120" placeholder="Seu nome completo">
+      </div>
+      <div class="field">
+        <label>E-mail</label>
+        <input type="email" id="solicitarEmail" autocomplete="email" required placeholder="voce@energisa.com.br">
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <input type="password" id="solicitarSenha" autocomplete="new-password" required minlength="8" maxlength="72" placeholder="mínimo 8 caracteres">
+      </div>
+      <div class="field">
+        <label>Repita a senha</label>
+        <input type="password" id="solicitarSenha2" autocomplete="new-password" required minlength="8" maxlength="72">
+      </div>
+      <button type="submit" class="btn btn-primary" id="solicitarBtn">Enviar pedido</button>
+      <button type="button" class="btn btn-ghost login-solicitar" onclick="voltarParaLogin()">Voltar</button>
+    </form>
+  </div>
+</div>
+
+<div id="shell" class="hidden">
+  <div id="sidebarOverlay" onclick="closeSidebar()"></div>
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 100 100" aria-label="SPARK">
+          <defs><linearGradient id="sparkGradSidebar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFB020"/><stop offset="1" stop-color="#F37020"/></linearGradient></defs>
+          <path d="M8 100 L50 0 L92 100" fill="none" stroke="#1F1F4C" stroke-width="17" stroke-linejoin="miter"/>
+          <path d="M62 0 L12 56 H42 L32 100 L90 36 H58 Z" transform="translate(16.3 33) scale(0.67)" fill="url(#sparkGradSidebar)" stroke="#FFFFFF" stroke-width="9" stroke-linejoin="round" paint-order="stroke"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-name" style="color:#fff">SPARK</div>
+        <div class="brand-sub">Sistema de Programação, Acompanhamento de Rotas e KPIs</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="navList"></nav>
+
+  </aside>
+
+  <main id="main">
+    <header class="topbar">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <button id="menuBtn" onclick="alternarMenuLateral()" aria-label="Mostrar ou esconder o menu" title="Mostrar ou esconder o menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div>
+          <h1 id="pageTitle">Visão Geral</h1>
+          <p class="sub" id="pageSub">Resumo do dia em todos os módulos</p>
+        </div>
+      </div>
+      <div class="topbar-user">
+        <div class="user-pill" id="userPill" onclick="abrirMinhaConta()" title="Minha conta" style="cursor:pointer;">
+          <div class="avatar" id="userPillAvatar">MC</div>
+          <div>
+            <div class="user-pill-nome" id="userPillNome">Admin Exemplo</div>
+            <div class="user-pill-perfil" id="userPillPerfil">Administrador</div>
+          </div>
+        </div>
+        <button type="button" class="btn-recarregar" id="btnRecarregar" onclick="recarregarSpark()" title="Atualizar o SPARK (igual ao Ctrl+F5): baixa de novo os arquivos da tela e recarrega" aria-label="Atualizar o SPARK">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        </button>
+        <span class="conn-chip" id="connBadge" title="Estado da ligação com o Controller"><i class="conn-dot"></i><span id="connTxt">verificando…</span></span>
+      </div>
+    </header>
+
+    <div id="view"></div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modalBody"></div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="js/vendor/leaflet.js"></script>
+<script src="js/vendor/leaflet.markercluster.js"></script>
+<script src="js/vendor/leaflet-heat.js"></script>
+<script src="js/vendor/xlsx.full.min.js"></script>
+<script src="js/api.js?v=3.16.3"></script>
+<script src="js/mapacache.js?v=3.16.3"></script>
+<script src="js/nix.js?v=3.16.3"></script>
+<script src="js/historico.js?v=3.16.3"></script>
+<script src="js/apprl.js?v=3.16.3"></script>
+<script src="js/rank.js?v=3.16.3"></script>
+<script src="js/rank-analise.js?v=3.16.3"></script>
+<script src="js/app.js?v=3.16.3"></script>
+<script src="js/boletim.js?v=3.16.3"></script>
+<script src="js/ajuda.js?v=3.16.3"></script>
+<script src="js/ux.js?v=3.16.3"></script>
+<script>
+  // pequeno indicador visual de conexão com o Controller (não faz parte do
+  // fluxo de dados em si — só avisa o usuário se está vendo dados reais ou
+  // de exemplo). Roda depois do bootApp() ter tido chance de checar.
+  function atualizarConn() {
+    const badge = document.getElementById("connBadge");
+    const txt = document.getElementById("connTxt");
+    if (!badge || !txt) return;
+    const on = (typeof API_ONLINE !== "undefined" && API_ONLINE);
+    badge.classList.toggle("on", on); badge.classList.toggle("off", !on);
+    txt.textContent = on ? "online" : "offline · dados de exemplo";
+    badge.title = on ? "Conectado ao Controller — dados reais" : "Controller offline — mostrando dados de exemplo";
+  }
+  setTimeout(atualizarConn, 600);
+  setInterval(atualizarConn, 5000);
+</script>
+<div id="navSpinner" class="nav-spinner" aria-hidden="true"><div class="nav-spinner-ring"></div><div class="nav-spinner-txt">Carregando…</div></div>
+</body>
+</html>

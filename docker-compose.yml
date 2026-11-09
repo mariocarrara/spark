@@ -1,0 +1,12 @@
+# Banco local para desenvolvimento: docker compose up -d
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: spark
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev
+    ports: ["5433:5432"]   # 5433: o Windows ja tem um PostgreSQL 18 na 5432
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+volumes:
+  pgdata:

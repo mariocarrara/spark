@@ -1,0 +1,35 @@
+# Blueprint do Render: no painel, New > Blueprint > escolha este repositorio.
+# Cria o banco PostgreSQL 16 e o servico web (Docker). Ajuste os "plan" conforme o orcamento.
+databases:
+  - name: spark-db
+    databaseName: spark
+    user: spark
+    postgresMajorVersion: "16"
+    region: virginia            # mais perto do Brasil entre as regioes do Render
+    plan: basic-1gb             # tem backup diario; o plano free apaga o banco em 30 dias
+    ipAllowList: []             # so acessivel por dentro do Render
+
+services:
+  - type: web
+    name: spark
+    runtime: docker
+    region: virginia
+    plan: standard              # 2 GB de RAM (o front carrega muitas OS; ver CLAUDE.md)
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: APP_KEY
+        sync: false             # cole no painel: rode "php artisan key:generate --show" e copie
+      - key: APP_URL
+        sync: false             # ex.: https://spark.onrender.com
+      - key: APP_TIMEZONE
+        value: America/Sao_Paulo
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        fromDatabase:
+          name: spark-db
+          property: connectionString
+      - key: DB_SEARCH_PATH
+        value: spark,public

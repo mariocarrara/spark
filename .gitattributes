@@ -1,0 +1,5 @@
+# Arquivos do projeto sao LF (regra do legado); nao converter para CRLF no Windows
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary

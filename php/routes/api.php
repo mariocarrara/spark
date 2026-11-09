@@ -1,0 +1,81 @@
+<?php
+
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\EquipeController;
+use App\Http\Controllers\Api\FeriadoController;
+use App\Http\Controllers\Api\ImportacaoController;
+use App\Http\Controllers\Api\ImportacaoLegadoController;
+use App\Http\Controllers\Api\IndisponibilidadeController;
+use App\Http\Controllers\Api\ListaController;
+use App\Http\Controllers\Api\PendenteController;
+use App\Http\Controllers\Api\PermissaoController;
+use App\Http\Controllers\Api\UsuarioController;
+use Illuminate\Support\Facades\Route;
+
+// Prefixo /api (bootstrap/app.php). Contrato: migracao/INVENTARIO_API.md.
+
+Route::get('/health', fn () => response()->json([
+    'status' => 'ok',
+    'backend' => 'laravel', // o front mostra recursos que so existem no sistema novo
+    'hora' => now()->toIso8601String(),
+    'usuario' => request()->user('api')?->nome ?? 'Anônimo',
+]));
+
+// Publicas
+Route::post('/auth/login', [AuthController::class, 'login']);
+Route::post('/usuarios/solicitar-cadastro', [UsuarioController::class, 'solicitarCadastro'])->middleware('throttle:5,10');
+
+Route::middleware('auth:api')->group(function () {
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::post('/auth/trocar-senha', [AuthController::class, 'trocarSenha']);
+
+    // Usuarios (a permissao de cada acao e conferida no controller, com a mensagem do legado)
+    Route::get('/usuarios', [UsuarioController::class, 'index']);
+    Route::get('/usuarios/solicitacoes', [UsuarioController::class, 'solicitacoes']);
+    Route::post('/usuarios/solicitacoes/{id}/aprovar', [UsuarioController::class, 'aprovar']);
+    Route::post('/usuarios/solicitacoes/{id}/recusar', [UsuarioController::class, 'recusar']);
+    Route::patch('/usuarios/{id}/liberar', [UsuarioController::class, 'liberar']);
+    Route::patch('/usuarios/{id}/bloquear', [UsuarioController::class, 'bloquear']);
+    Route::patch('/usuarios/{id}/desbloquear', [UsuarioController::class, 'desbloquear']);
+    Route::patch('/usuarios/{id}/senha', [UsuarioController::class, 'redefinirSenha']);
+    Route::delete('/usuarios/{id}', [UsuarioController::class, 'destroy']);
+
+    Route::get('/permissoes/{usuarioId}', [PermissaoController::class, 'show']);
+    Route::put('/permissoes/{usuarioId}', [PermissaoController::class, 'update']);
+
+    // Cadastros
+    Route::get('/equipes', [EquipeController::class, 'index']);
+    Route::post('/equipes', [EquipeController::class, 'store']);
+    Route::put('/equipes/{id}', [EquipeController::class, 'update']);
+
+    Route::get('/feriados', [FeriadoController::class, 'index']);
+    Route::post('/feriados', [FeriadoController::class, 'store']);
+
+    Route::get('/listas', [ListaController::class, 'index']);
+    Route::post('/listas', [ListaController::class, 'store']);
+    Route::put('/listas/{id}', [ListaController::class, 'update']);
+    Route::delete('/listas', [ListaController::class, 'destroyTodos']);
+
+    Route::get('/indisponibilidades', [IndisponibilidadeController::class, 'index']);
+    Route::post('/indisponibilidades', [IndisponibilidadeController::class, 'store']);
+    Route::delete('/indisponibilidades/{id}', [IndisponibilidadeController::class, 'destroy']);
+
+    Route::get('/importacao/log', [ImportacaoController::class, 'log']);
+
+    // Importar sistema antigo (pasta model/ do PowerShell) - so administrador
+    Route::middleware('admin')->prefix('importacao/legado')->group(function () {
+        Route::post('/iniciar', [ImportacaoLegadoController::class, 'iniciar']);
+        Route::post('/{lote}/parte', [ImportacaoLegadoController::class, 'parte']);
+        Route::post('/{lote}/executar', [ImportacaoLegadoController::class, 'executar']);
+        Route::delete('/{lote}', [ImportacaoLegadoController::class, 'descartar']);
+    });
+
+    // TRANSICAO: modulos ainda nao portados que o front le ao abrir (respondem vazio)
+    foreach (array_keys(PendenteController::PENDENTES) as $rota) {
+        Route::get('/'.$rota, [PendenteController::class, 'vazio'])->defaults('rota', $rota);
+    }
+});
+
+// Qualquer outra rota /api: ainda nao migrada (mensagem clara na tela em vez de erro generico)
+Route::fallback([PendenteController::class, 'naoMigrado']);

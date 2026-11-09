@@ -1,0 +1,18 @@
+# Nada disso vai para a imagem
+.git
+**/.env
+**/.env.*
+!php/.env.example
+php/vendor
+php/node_modules
+php/storage/logs/*
+php/storage/app/legado/*
+php/storage/framework/cache/*
+php/storage/framework/views/*
+php/bootstrap/cache/*.php
+_descartado
+legado-powershell/model
+legado-powershell/geo
+legado-powershell/controller
+migracao/amostra
+**/*.log

@@ -1,0 +1,12 @@
+# Dados reais e segredos: NUNCA versionar
+legado-powershell/model/*
+legado-powershell/geo/*
+!legado-powershell/model/.gitkeep
+!legado-powershell/geo/.gitkeep
+migracao/amostra/
+*.log
+*.jsonl
+.env
+vendor/
+*.zip
+_descartado/
