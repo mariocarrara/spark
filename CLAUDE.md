@@ -19,6 +19,11 @@ Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alert
 3. EM ANDAMENTO (09/11/2026) cadastros + front servido pelo Laravel (`FrontController`, `SPARK_FRONT_DIR`, sem sessao/cookie, bloqueia ../): FEITO `/equipes` GET/POST/PUT (escrita = manutencao importar+editar; legado nao conferia), `/feriados` GET/POST (upsert pela data), `/listas` GET/POST/PUT/DELETE?confirmar=sim (semeia os padroes), `/indisponibilidades` GET/POST/DELETE (logica), `/importacao/log` GET. TRANSICAO: `PendenteController::PENDENTES` responde vazio nos GETs de abertura dos modulos nao portados (o front so tolera 403, nao 404) e o fallback /api responde "ainda nao migrado"; ao portar um modulo, tirar dali. FALTA: metas + metas/importar, justificativas, produtividade/resumo, equipes/importar, cadastros genericos (`/cadastros/<base>`, exclusoes da Gestao de Bases), conjuntos/mapa.
 4. Depois importadores de OS/Excel (grids SGM, SIGOD, MO), mapa/rede (KMZ/Shapefile -> PostGIS, APP/RL), programacao/alertas/produtividade.
 
+## Git e Render
+- Repositorio Git na raiz (branch main, `core.autocrlf=false`, `.gitattributes` forca LF). Dados de exemplo do front anonimizados (exemplo.com.br).
+- Deploy: `Dockerfile` (php:8.3-apache, raiz php/public, porta $PORT) + `render.yaml` (Postgres 16 basic-1gb + web standard 2 GB, regiao virginia) + `docker/entrypoint.sh` (config/route cache + `spark:instalar-schema`, que so cria tabelas se o banco estiver vazio). `trustProxies(*)` ligado: sem ele o bloqueio por IP trancaria todos atras do proxy. Imagem testada localmente contra banco vazio (09/11/2026).
+- APP_KEY no painel do Render (`php artisan key:generate --show`); 1o admin pelo Shell do Render (`spark:admin-semente`).
+
 ## Escopo por municipio (prefeituras)
 Prototipo em `migracao/escopo_prefeitura.sql` + `teste_rls.sql` (9 testes passam): role `spark_app` sem BYPASSRLS, por requisicao `SET LOCAL spark.escopo='interno'|'municipios'` e `spark.municipios='ibge1,ibge2'`, default-deny, view `os_portal` (security_invoker) com lista branca de campos. Municipio vem do codigo IBGE do poste ou do poste mais proximo ate 300 m. Pendente: poligonos IBGE, RLS nas demais tabelas, tela admin usuario x municipio. Norma ANEEL: REN 1.137/2025 (manejo vegetal) encontrada; Mario falou "1.133", confirmar. Compartilhamento exige convenio + LGPD.
 
