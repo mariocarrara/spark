@@ -8,6 +8,10 @@ sed -ri "s/Listen [0-9]+/Listen ${PORT:-10000}/" /etc/apache2/ports.conf
 sed -ri "s/<VirtualHost \*:[0-9]+>/<VirtualHost *:${PORT:-10000}>/" /etc/apache2/sites-available/000-default.conf
 
 if [ -z "$APP_KEY" ]; then echo "ERRO: defina APP_KEY no Render (php artisan key:generate --show)"; exit 1; fi
+if [ -z "$DB_URL" ] && [ -z "$DB_HOST" ]; then
+  echo "ERRO: falta o banco. No Render, crie a variavel DB_URL com a 'Internal Database URL' do PostgreSQL (aba Info do banco)."
+  exit 1
+fi
 
 php artisan config:cache
 php artisan route:cache

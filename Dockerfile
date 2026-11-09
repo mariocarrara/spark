@@ -36,6 +36,7 @@ RUN sed -ri 's#/var/www/html#/var/www/spark/php/public#g' /etc/apache2/sites-ava
 COPY docker/entrypoint.sh /usr/local/bin/spark-entrypoint
 RUN chmod +x /usr/local/bin/spark-entrypoint
 
-ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr CACHE_STORE=file SESSION_DRIVER=array PORT=10000
+ENV APP_ENV=production APP_DEBUG=false LOG_CHANNEL=stderr CACHE_STORE=file SESSION_DRIVER=array PORT=10000 \
+    DB_CONNECTION=pgsql DB_SEARCH_PATH=spark,public APP_TIMEZONE=America/Sao_Paulo
 EXPOSE 10000
 CMD ["spark-entrypoint"]
