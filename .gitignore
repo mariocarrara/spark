@@ -7,6 +7,6 @@ migracao/amostra/
 *.log
 *.jsonl
 .env
-vendor/
+/php/vendor/
 *.zip
 _descartado/
