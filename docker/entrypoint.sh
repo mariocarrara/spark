@@ -18,4 +18,10 @@ php artisan route:cache
 # cria as tabelas so se o banco estiver vazio (nunca apaga nada)
 php artisan spark:instalar-schema
 
+# 1o admin sem Shell: se SPARK_ADMIN_EMAIL e SPARK_ADMIN_SENHA estiverem no Render e ainda
+# nao houver nenhum administrador, cria. Depois disso nao faz nada (pode apagar as variaveis).
+if [ -n "$SPARK_ADMIN_EMAIL" ] && [ -n "$SPARK_ADMIN_SENHA" ]; then
+  php artisan spark:admin-semente "$SPARK_ADMIN_EMAIL" "${SPARK_ADMIN_NOME:-Administrador}" --senha-env=SPARK_ADMIN_SENHA --so-se-nao-houver-admin || echo "AVISO: admin nao criado (senha com menos de 8 caracteres?)"
+fi
+
 exec apache2-foreground

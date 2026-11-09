@@ -15,11 +15,17 @@ use Illuminate\Support\Str;
  */
 class AdminSemente extends Command
 {
-    protected $signature = 'spark:admin-semente {email} {nome}';
+    protected $signature = 'spark:admin-semente {email} {nome} {--senha-env= : le a senha desta variavel de ambiente (sem perguntar)} {--so-se-nao-houver-admin : nao faz nada se ja existir administrador ativo}';
     protected $description = 'Cria ou reativa um usuario Administrador (instalacao limpa)';
 
     public function handle(): int
     {
+        if ($this->option('so-se-nao-houver-admin') && Usuario::where('perfil_base', Usuario::ADMIN)->where('status_conta', 'Ativo')->exists()) {
+            $this->info('Ja existe administrador; nada a fazer (pode apagar SPARK_ADMIN_EMAIL/SPARK_ADMIN_SENHA do Render).');
+
+            return self::SUCCESS;
+        }
+
         $email = mb_strtolower(trim($this->argument('email')));
         if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $this->error('E-mail invalido.');
@@ -27,15 +33,20 @@ class AdminSemente extends Command
             return self::FAILURE;
         }
 
-        $senha = (string) $this->secret('Senha do administrador');
         $min = config('spark.senha_min');
+        if ($var = $this->option('senha-env')) {
+            // modo sem terminal (Render sem Shell): a senha vem de uma variavel de ambiente
+            $senha = (string) getenv($var);
+        } else {
+            $senha = (string) $this->secret('Senha do administrador');
+            if ($senha !== '' && $senha !== (string) $this->secret('Repita a senha')) {
+                $this->error('As senhas nao conferem.');
+
+                return self::FAILURE;
+            }
+        }
         if (mb_strlen($senha) < $min) {
             $this->error("A senha precisa ter pelo menos {$min} caracteres.");
-
-            return self::FAILURE;
-        }
-        if ($senha !== (string) $this->secret('Repita a senha')) {
-            $this->error('As senhas nao conferem.');
 
             return self::FAILURE;
         }
