@@ -10,8 +10,10 @@ use App\Http\Controllers\Api\ImportacaoController;
 use App\Http\Controllers\Api\ImportacaoGridController;
 use App\Http\Controllers\Api\ImportacaoLegadoController;
 use App\Http\Controllers\Api\IndisponibilidadeController;
+use App\Http\Controllers\Api\JustificativaController;
 use App\Http\Controllers\Api\ListaController;
 use App\Http\Controllers\Api\ManutencaoController;
+use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\PendenteController;
 use App\Http\Controllers\Api\PermissaoController;
 use App\Http\Controllers\Api\ProgramacaoController;
@@ -86,6 +88,14 @@ Route::middleware('auth:api')->group(function () {
     // o numero da OS tem "/" (ex.: AUDTUP1  000304/2026): {osId} aceita barra
     Route::put('/ajustes/{osId}', [AjusteController::class, 'salvar'])->where('osId', '.+');
     Route::delete('/ajustes/{osId}', [AjusteController::class, 'remover'])->where('osId', '.+');
+
+    // Metas e Justificativas (a produtividade e calculada no navegador)
+    Route::get('/metas', [MetaController::class, 'index']);
+    Route::post('/metas', [MetaController::class, 'store']);
+    Route::put('/metas/{id}', [MetaController::class, 'update']);
+    Route::get('/justificativas', [JustificativaController::class, 'index']);
+    Route::post('/justificativas', [JustificativaController::class, 'store']);
+    Route::delete('/justificativas/{id}', [JustificativaController::class, 'destroy']);
 
     // Programacao
     Route::get('/programacao', [ProgramacaoController::class, 'index']);

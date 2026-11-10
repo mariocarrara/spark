@@ -110,9 +110,9 @@ CREATE TABLE metas (
   equipe_id      TEXT NOT NULL,                    -- sem FK: ha metas de equipes ja inativas/removidas
   tipo           TEXT NOT NULL DEFAULT 'poda',     -- poda | faixa
   ano_mes        CHAR(7) NOT NULL,                 -- 'AAAA-MM'
-  meta_mensal    NUMERIC(14,6) NOT NULL,
+  meta_mensal    NUMERIC NOT NULL,                 -- sem limite de casas (metas de faixa tem 9 decimais)
   dias_uteis     INT NOT NULL,
-  meta_diaria    NUMERIC(14,6),
+  meta_diaria    NUMERIC,
   origem         TEXT,
   atualizado_por TEXT,
   atualizado_em  TIMESTAMPTZ,

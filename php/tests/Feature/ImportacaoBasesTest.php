@@ -53,17 +53,17 @@ class ImportacaoBasesTest extends TestCase
         $this->assertSame(0, DB::table('metas')->count());
     }
 
-    public function test_metas_dias_uteis_e_repetidas_vale_a_ultima(): void
+    public function test_metas_dias_uteis_e_repetidas_vale_a_primeira(): void
     {
         DB::table('feriados')->insert(['data' => '2026-04-21', 'descricao' => 'Tiradentes']);
         $this->enviar('confirmar', 'Metas', [
             ['CodigoEquipe' => 'EQ1', 'AnoMes' => '2026-04', 'MetaMensal' => '100', 'Servico' => ''],
-            ['codigoequipe' => 'EQ1', 'AnoMes' => '2026-04', 'MetaMensal' => '210', 'Servico' => 'Poda'],      // mesma meta: vale esta
+            ['codigoequipe' => 'EQ1', 'AnoMes' => '2026-04', 'MetaMensal' => '210', 'Servico' => 'Poda'],      // repetida: vale a 1a (100)
             ['CodigoEquipe' => 'EQ1', 'AnoMes' => '2026-04', 'MetaMensal' => '5,5', 'Servico' => 'Limpeza de faixa'],
         ])->assertOk()->assertJson(['processados' => 3, 'log' => ['base' => 'Metas', 'registrosProcessados' => 3]]);
         $poda = DB::table('metas')->where('tipo', 'poda')->first();
         // abril/2026: 22 dias uteis menos o feriado de 21/04 = 21
-        $this->assertEquals([210, 21, 10, 'Importado', 'Nome a1'], [(float) $poda->meta_mensal, $poda->dias_uteis, (float) $poda->meta_diaria, $poda->origem, $poda->atualizado_por]);
+        $this->assertEquals([100, 21, 4.76, 'Importado', 'Nome a1'], [(float) $poda->meta_mensal, $poda->dias_uteis, (float) $poda->meta_diaria, $poda->origem, $poda->atualizado_por]);
         $this->assertEquals(5.5, (float) DB::table('metas')->where('tipo', 'faixa')->value('meta_mensal'));
         // reimportar atualiza, nao duplica
         $this->enviar('confirmar', 'Metas', [['CodigoEquipe' => 'EQ1', 'AnoMes' => '2026-04', 'MetaMensal' => '300', 'Servico' => '']])->assertOk();

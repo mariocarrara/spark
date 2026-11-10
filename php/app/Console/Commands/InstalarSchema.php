@@ -25,7 +25,8 @@ class InstalarSchema extends Command
                 CREATE TABLE IF NOT EXISTS legado_bruto (entidade TEXT PRIMARY KEY, dados JSONB NOT NULL, importado_em TIMESTAMPTZ NOT NULL DEFAULT now());
                 ALTER TABLE programacoes ADD COLUMN IF NOT EXISTS exec_snap JSONB;
                 ALTER TABLE programacao_log ADD COLUMN IF NOT EXISTS os_add JSONB;
-                ALTER TABLE programacao_log ADD COLUMN IF NOT EXISTS os_rem JSONB;");
+                ALTER TABLE programacao_log ADD COLUMN IF NOT EXISTS os_rem JSONB;
+                ALTER TABLE metas ALTER COLUMN meta_mensal TYPE NUMERIC, ALTER COLUMN meta_diaria TYPE NUMERIC;");
             $this->info('Banco ja instalado; nada a fazer.');
 
             return self::SUCCESS;

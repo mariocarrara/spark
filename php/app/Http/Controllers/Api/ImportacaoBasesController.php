@@ -16,7 +16,7 @@ use Illuminate\Support\Str;
  *   POST /api/importacao/confirmar {base, linhas, arquivoOrigem} -> grava pela chave unica (sem duplicar)
  * Contrato de routes/importacao.ps1 + lib/Validacao.ps1 ($Script:ImportSchemas, Get-PosProcessarDaBase).
  * Diferencas: Equipes nao reativa equipe desativada (regra v3.5.2 do legado, que so valia no outro caminho);
- * Metas repetidas no mesmo arquivo (mesma equipe+tipo+mes) -> vale a ultima linha (o legado duplicava).
+ * Metas repetidas no mesmo arquivo (mesma equipe+tipo+mes) -> vale a PRIMEIRA linha (a que a tela do legado mostra; o legado gravava todas).
  * Vao, Protecao e VERA tem importacao propria (arquivos grandes) e ficam para depois.
  */
 class ImportacaoBasesController extends Controller
@@ -130,7 +130,8 @@ class ImportacaoBasesController extends Controller
             $tipo = preg_match('/faixa|limpeza/i', (string) self::campo($row, 'Servico')) ? 'faixa' : 'poda';
             $mensal = (float) str_replace(',', '.', (string) self::campo($row, 'MetaMensal'));
             $dias = self::diasUteis($anoMes, $feriados);
-            $porChave["$equipe|$tipo|$anoMes"] = ['equipe_id' => $equipe, 'tipo' => $tipo, 'ano_mes' => $anoMes, 'meta_mensal' => $mensal, 'dias_uteis' => $dias,
+            // repetida no mesmo arquivo: vale a PRIMEIRA (a que a tela do legado usa) - regra a confirmar com o Mario
+            $porChave["$equipe|$tipo|$anoMes"] ??= ['equipe_id' => $equipe, 'tipo' => $tipo, 'ano_mes' => $anoMes, 'meta_mensal' => $mensal, 'dias_uteis' => $dias,
                 'meta_diaria' => $dias > 0 ? round($mensal / $dias, 2) : 0, 'origem' => 'Importado', 'atualizado_por' => $eu->nome, 'atualizado_em' => now()];
         }
         foreach ($porChave as $m) {

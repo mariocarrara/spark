@@ -111,6 +111,6 @@ class CadastrosApiTest extends TestCase
         $this->get('/%2e%2e/controller/server.ps1')->assertNotFound();
         $this->get('/nao-existe.js')->assertNotFound();
         $this->getJson('/api/nao-existe')->assertNotFound()->assertJson(['erro' => 'Esta função ainda não foi migrada para o sistema novo.']);
-        $this->postJson('/api/metas', [])->assertNotFound(); // escrita em modulo pendente
+        $this->postJson('/api/prefeituras', [])->assertNotFound(); // escrita em modulo pendente
     }
 }

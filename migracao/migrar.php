@@ -61,6 +61,12 @@ function copiar(PDO $pdo, string $tabela, array $cols, iterable $linhas, string 
     printf("  %-28s %9d linhas  %6.1fs\n", $nome ?: $tabela, $n, microtime(true) - $t0);
     return $n;
 }
+// metas repetidas (equipe+tipo+mes): vale a PRIMEIRA, que e a que a tela do legado usa (prodMetaDe: ms.find)
+function primeiroPorChave(array $itens, callable $chave): array {
+    $m = [];
+    foreach ($itens as $i) { $k = $chave($i); if (!array_key_exists($k, $m)) $m[$k] = $i; }
+    return array_values($m);
+}
 function unico(array $itens, callable $chave): array {   // ultimo registro por chave vence
     $m = [];
     foreach ($itens as $i) $m[$chave($i)] = $i;
@@ -104,7 +110,7 @@ echo "Cadastros\n";
 copiar($pdo, 'equipes', ['id','nome','tipo_equipe','polo','regional','departamento','proprio_terceiro','equipe_poda','base','ativo'],
   (function () use ($model) { foreach (unico(lerJson("$model/equipes.json") ?? [], fn($x) => $x['id']) as $e) yield [$e['id'], $e['nome'] ?? $e['id'], nn($e['tipoEquipe'] ?? null), nn($e['polo'] ?? null), nn($e['regional'] ?? null), nn($e['departamento'] ?? null), nn($e['proprioTerceiro'] ?? null), (bool)($e['equipePoda'] ?? false), pt($e['baseLat'] ?? null, $e['baseLng'] ?? null), (bool)($e['ativo'] ?? true)]; })());
 copiar($pdo, 'metas', ['id','equipe_id','tipo','ano_mes','meta_mensal','dias_uteis','meta_diaria','origem','atualizado_por','atualizado_em'],
-  (function () use ($model) { foreach (unico(lerJson("$model/metas.json") ?? [], fn($x) => $x['equipeId'] . '|' . ($x['tipo'] ?? 'poda') . '|' . $x['anoMes']) as $m) yield [$m['id'], $m['equipeId'], $m['tipo'] ?? 'poda', $m['anoMes'], $m['metaMensal'], (int)($m['diasUteis'] ?? 21), $m['metaDiaria'] ?? null, nn($m['origem'] ?? null), nn($m['atualizadoPor'] ?? null), nn($m['atualizadoEm'] ?? null)]; })());
+  (function () use ($model) { foreach (primeiroPorChave(lerJson("$model/metas.json") ?? [], fn($x) => $x['equipeId'] . '|' . ($x['tipo'] ?? 'poda') . '|' . $x['anoMes']) as $m) yield [$m['id'], $m['equipeId'], $m['tipo'] ?? 'poda', $m['anoMes'], $m['metaMensal'], (int)($m['diasUteis'] ?? 21), $m['metaDiaria'] ?? null, nn($m['origem'] ?? null), nn($m['atualizadoPor'] ?? null), nn($m['atualizadoEm'] ?? null)]; })());
 copiar($pdo, 'feriados', ['data','descricao','abrangencia'],
   (function () use ($model) { foreach (unico(lerJson("$model/feriados.json") ?? [], fn($x) => $x['data']) as $f) yield [$f['data'], $f['descricao'] ?? '', $f['abrangencia'] ?? 'Nacional']; })());
 copiar($pdo, 'indisponibilidades', ['id','equipe_id','data_inicio','data_fim','tipo','texto','autor_id','criado_em','excluido','excluido_por','excluido_em'],

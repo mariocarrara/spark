@@ -14,8 +14,6 @@ use Illuminate\Http\JsonResponse;
 class PendenteController extends Controller
 {
     public const PENDENTES = [
-        'metas' => [],
-        'justificativas' => [],
         'prefeituras' => [],
         'logistica/equipes' => [],
         'logistica/programacoes' => [],
