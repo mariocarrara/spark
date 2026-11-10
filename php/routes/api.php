@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CamadasController;
 use App\Http\Controllers\Api\EquipeController;
 use App\Http\Controllers\Api\FeriadoController;
 use App\Http\Controllers\Api\ImportacaoController;
@@ -68,6 +69,15 @@ Route::middleware('auth:api')->group(function () {
 
     // Mapa de Manutencao
     Route::get('/manutencao/os', [ManutencaoController::class, 'os']);
+    Route::get('/manutencao/vera-mapa', [CamadasController::class, 'veraMapa']);
+    Route::get('/postes/resumo', [CamadasController::class, 'postesResumo']);
+    Route::get('/postes/area', [CamadasController::class, 'postesArea']);
+    Route::get('/postes/lista', [CamadasController::class, 'postesLista']);
+    Route::get('/equip/resumo', [CamadasController::class, 'equipResumo']);
+    Route::get('/equip/area', [CamadasController::class, 'equipArea']);
+    Route::get('/equip/poste', [CamadasController::class, 'equipPoste']);
+    Route::get('/equip/lista', [CamadasController::class, 'equipLista']);
+    Route::get('/equip/cadastro', [CamadasController::class, 'equipCadastro']);
     Route::get('/manutencao/localidades-mapa', [ManutencaoController::class, 'localidadesMapa']);
     Route::get('/cadastros/conjuntos/mapa', [ManutencaoController::class, 'conjuntosMapa']);
     Route::get('/ajustes', [AjusteController::class, 'index']);
