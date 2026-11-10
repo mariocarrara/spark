@@ -1273,3 +1273,21 @@ body.tem-tela-cheia{ overflow:hidden; }
 .os-cols-item{ display:flex; align-items:center; gap:8px; padding:4px 2px; font-size:12.5px; cursor:pointer; }
 .os-cols-nota{ margin:8px 0 0; font-size:11px; color:var(--muted); }
 td.os-texto{ max-width:340px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:12px; }
+
+/* v3.16.4 - celular: a barra do mapa (rank, coordenada, retangulo/area livre, busca) saia por cima
+   do mapa e cobria quase metade dele. Em tela estreita ela vira uma faixa normal LOGO ABAIXO do mapa
+   (o mapa fica livre; os botoes de filtro/limpar continuam no canto do mapa). Desktop nao muda. */
+@media (max-width:760px){
+  .mapa-barra{ position:static; left:auto; right:auto; top:auto; margin-top:8px; pointer-events:auto; z-index:auto; }
+  .mapa-barra > div{ width:100%; max-width:none; box-sizing:border-box; padding:8px; box-shadow:none; border:1px solid var(--border); background:var(--surface); }
+  .mapa-barra div:has(> #buscaCoordenadaInput){ flex:1 1 100%; }
+  .mapa-barra input#buscaCoordenadaInput{ flex:1; min-width:0; width:auto; }
+  .mapa-barra .sel-seg{ flex:1 1 auto; }
+  .mapa-barra .sel-seg .btn{ flex:1; justify-content:center; }
+  .mapa-barra .mapa-busca{ flex:1 1 100%; min-width:0; }
+  .mapa-barra .btn, .mapa-barra input#buscaCoordenadaInput, .mapa-barra .mapa-busca input, .mapa-barra .mapa-busca-modo{ height:38px; font-size:14px; }
+  .mapa-barra .mapa-busca-modo{ width:38px; }
+  .leaflet-map.mapa-grande{ height:62vh; }
+  .coord-multi{ left:10px; right:10px; width:auto; top:60px; }
+}
+@media (max-width:760px){ html[data-tema="dark"] .mapa-barra > div{ background:var(--surface); } }
