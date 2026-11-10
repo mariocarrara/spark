@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\IndisponibilidadeController;
 use App\Http\Controllers\Api\ListaController;
 use App\Http\Controllers\Api\PendenteController;
 use App\Http\Controllers\Api\PermissaoController;
+use App\Http\Controllers\Api\ProgramacaoController;
 use App\Http\Controllers\Api\UsuarioController;
 use Illuminate\Support\Facades\Route;
 
@@ -62,6 +63,17 @@ Route::middleware('auth:api')->group(function () {
     Route::delete('/indisponibilidades/{id}', [IndisponibilidadeController::class, 'destroy']);
 
     Route::get('/importacao/log', [ImportacaoController::class, 'log']);
+
+    // Programacao
+    Route::get('/programacao', [ProgramacaoController::class, 'index']);
+    Route::post('/programacao', [ProgramacaoController::class, 'store']);
+    Route::get('/programacao/buscar-protecao', [ProgramacaoController::class, 'buscarProtecao']);
+    Route::get('/programacao/protecao-proxima', [ProgramacaoController::class, 'protecaoProxima']);
+    Route::get('/programacao/logistica', [ProgramacaoController::class, 'logistica']);
+    Route::post('/programacao/zerar', [ProgramacaoController::class, 'zerar']);
+    Route::get('/programacao/{id}/log', [ProgramacaoController::class, 'log']);
+    Route::patch('/programacao/{id}/status', [ProgramacaoController::class, 'status']);
+    Route::put('/programacao/{id}', [ProgramacaoController::class, 'update']);
 
     // Importar sistema antigo (pasta model/ do PowerShell) - so administrador
     Route::middleware('admin')->prefix('importacao/legado')->group(function () {

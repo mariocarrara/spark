@@ -22,7 +22,10 @@ class InstalarSchema extends Command
             // tabelas acrescentadas depois da 1a instalacao (v3.16.3)
             DB::unprepared("SET search_path = spark, public;
                 CREATE TABLE IF NOT EXISTS exclusoes (base TEXT NOT NULL, chave TEXT NOT NULL, em TIMESTAMPTZ, por TEXT, PRIMARY KEY (base, chave));
-                CREATE TABLE IF NOT EXISTS legado_bruto (entidade TEXT PRIMARY KEY, dados JSONB NOT NULL, importado_em TIMESTAMPTZ NOT NULL DEFAULT now());");
+                CREATE TABLE IF NOT EXISTS legado_bruto (entidade TEXT PRIMARY KEY, dados JSONB NOT NULL, importado_em TIMESTAMPTZ NOT NULL DEFAULT now());
+                ALTER TABLE programacoes ADD COLUMN IF NOT EXISTS exec_snap JSONB;
+                ALTER TABLE programacao_log ADD COLUMN IF NOT EXISTS os_add JSONB;
+                ALTER TABLE programacao_log ADD COLUMN IF NOT EXISTS os_rem JSONB;");
             $this->info('Banco ja instalado; nada a fazer.');
 
             return self::SUCCESS;

@@ -324,6 +324,7 @@ CREATE TABLE programacoes (
   origem_tela        TEXT,
   previsto_concluir  BOOLEAN NOT NULL DEFAULT false,
   programador_id     TEXT,
+  exec_snap          JSONB,                         -- copias das OS EXECUTADAS (filhas) que apontam para as programadas (execSnap)
   criado_em          TIMESTAMPTZ NOT NULL,
   atualizado_em      TIMESTAMPTZ NOT NULL
 );
@@ -349,7 +350,8 @@ CREATE INDEX programacao_os_ix ON programacao_os (os_id);
 
 CREATE TABLE programacao_log (
   id BIGSERIAL PRIMARY KEY, programacao_id UUID NOT NULL, momento TIMESTAMPTZ NOT NULL, usuario_id TEXT,
-  acao TEXT NOT NULL, resumo TEXT, ref TEXT, mudancas JSONB
+  acao TEXT NOT NULL, resumo TEXT, ref TEXT, mudancas JSONB,
+  os_add JSONB, os_rem JSONB                       -- OS incluidas / retiradas nessa alteracao (add/rem do legado)
 );
 CREATE INDEX programacao_log_ix ON programacao_log (programacao_id, momento DESC);
 

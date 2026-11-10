@@ -95,6 +95,7 @@ return [
             'prefix_indexes' => true,
             'search_path' => env('DB_SEARCH_PATH', 'spark,public'), // tabelas do schema.sql ficam no schema spark
             'sslmode' => env('DB_SSLMODE', 'prefer'), // Render: require
+            'timezone' => env('APP_TIMEZONE', 'UTC'), // datas do banco ja saem no fuso do sistema (ex.: -03:00)
         ],
 
         'sqlsrv' => [

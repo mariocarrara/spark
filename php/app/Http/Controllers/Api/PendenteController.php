@@ -16,7 +16,6 @@ class PendenteController extends Controller
     public const PENDENTES = [
         'metas' => [],
         'justificativas' => [],
-        'programacao' => [],
         'prefeituras' => [],
         'ajustes' => [],
         'manutencao/os' => [],
