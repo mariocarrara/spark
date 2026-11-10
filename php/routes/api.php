@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CamadasController;
 use App\Http\Controllers\Api\EquipeController;
 use App\Http\Controllers\Api\FeriadoController;
+use App\Http\Controllers\Api\ImportacaoBasesController;
 use App\Http\Controllers\Api\ImportacaoController;
 use App\Http\Controllers\Api\ImportacaoGridController;
 use App\Http\Controllers\Api\ImportacaoLegadoController;
@@ -96,6 +97,10 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/programacao/{id}/log', [ProgramacaoController::class, 'log']);
     Route::patch('/programacao/{id}/status', [ProgramacaoController::class, 'status']);
     Route::put('/programacao/{id}', [ProgramacaoController::class, 'update']);
+
+    // Importacao de bases pequenas (o navegador le a planilha)
+    Route::post('/importacao/validar', [ImportacaoBasesController::class, 'validar']);
+    Route::post('/importacao/confirmar', [ImportacaoBasesController::class, 'confirmar']);
 
     // Importacao das grids de OS (SGM/SIGOD) com progresso ao vivo
     Route::post('/importacao/{segmento}', [ImportacaoGridController::class, 'podas'])
