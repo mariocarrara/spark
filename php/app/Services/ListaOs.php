@@ -14,19 +14,19 @@ use Illuminate\Support\Facades\DB;
 class ListaOs
 {
     /** Expressao SQL que devolve 1 OS no formato do legado. */
-    private const OBJETO = <<<'SQL'
+    public const OBJETO = <<<'SQL'
 json_strip_nulls(json_build_object(
-  'id', id, 'origem', origem, 'osPrimaria', os_primaria, 'idVera', id_vera, 'statusOS', status_os, 'tipoServico', tipo_servico,
-  'tipoEquipeNecessaria', tipo_equipe_necessaria, 'tipoEquipeExec', tipo_equipe_exec, 'prioridadeEW', prioridade_ew, 'equipeId', equipe_id,
-  'dataAbertura', to_char(data_abertura, 'YYYY-MM-DD'), 'dataExecucao', to_char(data_execucao, 'YYYY-MM-DD'), 'dataPrevista', to_char(data_prevista, 'YYYY-MM-DD'),
-  'alimentador', alimentador, 'conjunto', conjunto, 'protecaoId', protecao_id, 'trecho', trecho, 'localidade', localidade,
-  'descEsquema', desc_esquema, 'observacao', observacao,
-  'localizacao', CASE WHEN loc IS NULL THEN NULL ELSE json_build_object('lat', ST_Y(loc), 'lng', ST_X(loc), 'fonte', loc_fonte, 'aproximada', loc_aproximada, 'origem', loc_origem) END,
-  'previsto', previsto::float8, 'realizado', realizado::float8, 'previstoPoda', previsto_poda::float8, 'previstoLimpeza', previsto_limpeza::float8,
-  'previstoEstrutura', previsto_estrutura::float8, 'realizadoPoda', realizado_poda::float8, 'realizadoLimpeza', realizado_limpeza::float8,
-  'realizadoEstrutura', realizado_estrutura::float8,
-  'posteId', poste_id, 'posteTipo', poste_tipo, 'posteAreaLocal', poste_area_local, 'posteConjunto', poste_conjunto, 'posteMun', poste_mun,
-  'posteLat', ST_Y(poste_loc), 'posteLng', ST_X(poste_loc), 'previstoPorEsquema', previsto_por_esquema, 'localidadePorPoste', localidade_por_poste
+  'id', os.id, 'origem', os.origem, 'osPrimaria', os.os_primaria, 'idVera', os.id_vera, 'statusOS', os.status_os, 'tipoServico', os.tipo_servico,
+  'tipoEquipeNecessaria', os.tipo_equipe_necessaria, 'tipoEquipeExec', os.tipo_equipe_exec, 'prioridadeEW', os.prioridade_ew, 'equipeId', os.equipe_id,
+  'dataAbertura', to_char(os.data_abertura, 'YYYY-MM-DD'), 'dataExecucao', to_char(os.data_execucao, 'YYYY-MM-DD'), 'dataPrevista', to_char(os.data_prevista, 'YYYY-MM-DD'),
+  'alimentador', os.alimentador, 'conjunto', os.conjunto, 'protecaoId', os.protecao_id, 'trecho', os.trecho, 'localidade', os.localidade,
+  'descEsquema', os.desc_esquema, 'observacao', os.observacao,
+  'localizacao', CASE WHEN os.loc IS NULL THEN NULL ELSE json_build_object('lat', ST_Y(os.loc), 'lng', ST_X(os.loc), 'fonte', os.loc_fonte, 'aproximada', os.loc_aproximada, 'origem', os.loc_origem) END,
+  'previsto', os.previsto::float8, 'realizado', os.realizado::float8, 'previstoPoda', os.previsto_poda::float8, 'previstoLimpeza', os.previsto_limpeza::float8,
+  'previstoEstrutura', os.previsto_estrutura::float8, 'realizadoPoda', os.realizado_poda::float8, 'realizadoLimpeza', os.realizado_limpeza::float8,
+  'realizadoEstrutura', os.realizado_estrutura::float8,
+  'posteId', os.poste_id, 'posteTipo', os.poste_tipo, 'posteAreaLocal', os.poste_area_local, 'posteConjunto', os.poste_conjunto, 'posteMun', os.poste_mun,
+  'posteLat', ST_Y(os.poste_loc), 'posteLng', ST_X(os.poste_loc), 'previstoPorEsquema', os.previsto_por_esquema, 'localidadePorPoste', os.localidade_por_poste
 ))
 SQL;
 

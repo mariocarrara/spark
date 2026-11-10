@@ -4,16 +4,16 @@
 FROM php:8.3-apache
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libpq-dev unzip \
- && docker-php-ext-install pdo_pgsql opcache \
+ && apt-get install -y --no-install-recommends libpq-dev libzip-dev libicu-dev unzip \
+ && docker-php-ext-install pdo_pgsql opcache zip intl \
  && a2enmod rewrite headers \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# PHP de producao. Upload em pedacos de 8 MB (importacao do sistema antigo) cabe com folga.
+# PHP de producao. Grids de OS sobem inteiras (SGM_EXECUTADO real ~60 MB); zip/intl leem o .xlsx.
 RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
- && { echo 'upload_max_filesize=20M'; echo 'post_max_size=24M'; echo 'memory_limit=512M'; \
+ && { echo 'upload_max_filesize=300M'; echo 'post_max_size=600M'; echo 'memory_limit=2048M'; echo 'max_file_uploads=10'; \
       echo 'max_execution_time=3600'; echo 'expose_php=Off'; echo 'opcache.validate_timestamps=0'; } \
     > "$PHP_INI_DIR/conf.d/spark.ini"
 

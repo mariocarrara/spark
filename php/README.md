@@ -7,7 +7,7 @@ Responde o mesmo contrato `/api/...` do legado (ver `../migracao/INVENTARIO_API.
 2. `cp .env.example .env`, preencher `DB_PASSWORD`, `php artisan key:generate`.
 3. Primeiro admin: `php artisan spark:admin-semente admin@empresa.com.br "Nome"` (a senha e pedida no terminal).
 4. `php artisan serve` -> abra `http://localhost:8000` (o Laravel serve o front do legado, pasta `SPARK_FRONT_DIR`).
-5. Testes: uma vez `php artisan spark:banco-teste` (cria o banco `spark_test` com o schema.sql), depois `php artisan test`. Cada teste roda numa transacao desfeita no fim. Precisa do Docker no ar.
+5. Testes: uma vez `php artisan spark:banco-teste` (cria o banco `spark_test` com o schema.sql), depois `php artisan test`. Cada teste roda numa transacao desfeita no fim. Precisa do Docker no ar. Com o PHP do XAMPP (zip desligado), rode `php -d extension=zip vendor/bin/phpunit` para incluir os testes de importacao de planilha.
 
 O PHP precisa das extensoes `pdo_pgsql` e `sodium` ligadas no `php.ini`.
 

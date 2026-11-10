@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\CamadasController;
 use App\Http\Controllers\Api\EquipeController;
 use App\Http\Controllers\Api\FeriadoController;
 use App\Http\Controllers\Api\ImportacaoController;
+use App\Http\Controllers\Api\ImportacaoGridController;
 use App\Http\Controllers\Api\ImportacaoLegadoController;
 use App\Http\Controllers\Api\IndisponibilidadeController;
 use App\Http\Controllers\Api\ListaController;
@@ -95,6 +96,10 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/programacao/{id}/log', [ProgramacaoController::class, 'log']);
     Route::patch('/programacao/{id}/status', [ProgramacaoController::class, 'status']);
     Route::put('/programacao/{id}', [ProgramacaoController::class, 'update']);
+
+    // Importacao das grids de OS (SGM/SIGOD) com progresso ao vivo
+    Route::post('/importacao/{segmento}', [ImportacaoGridController::class, 'podas'])
+        ->where('segmento', 'podas-executado|podas-pendente|podas-historico|podas-sigod|podas-sigod-pendente');
 
     // Importar sistema antigo (pasta model/ do PowerShell) - so administrador
     Route::middleware('admin')->prefix('importacao/legado')->group(function () {
