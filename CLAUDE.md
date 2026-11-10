@@ -3,7 +3,7 @@
 Responda ao Mario em portugues. Ele e gestor no Grupo Energisa, entende PHP/seguranca, nao e dev em tempo integral: explique curto, entregue pronto.
 
 ## O que e
-Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alertas, Pontos Nix, APP/RL, historico por plano. Versao atual do legado: **v3.16.1**.
+Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alertas, Pontos Nix, APP/RL, historico por plano. Versao atual do legado: **v3.16.4**.
 
 ## Estado
 - `legado-powershell/`: PowerShell 5.1 (HttpListener) com `controller/server.ps1`, `routes/*.ps1`, `lib/*.ps1`; dados em JSON em `model/` (`Read-JsonModel`/`Write-JsonModel`); front vanilla JS em `view/js` (app.js gigante). PowerShell NUNCA foi executado no ambiente do Claude: so revisado. Arquivos com BOM + LF.
@@ -20,6 +20,8 @@ Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alert
 4. Depois importadores de OS/Excel (grids SGM, SIGOD, MO), mapa/rede (KMZ/Shapefile -> PostGIS, APP/RL), programacao/alertas/produtividade.
 
 ## Git e Render
+- NO AR (09/11/2026) no Render, regiao Oregon (banco e servico), com nome escolhido pelo Mario (servico recriado para trocar o subdominio; o antigo spark-ta4y deve ser apagado). 1o admin criado via SPARK_ADMIN_EMAIL/SENHA (apagar SPARK_ADMIN_SENHA). Pendencias de seguranca no Render: remover 0.0.0.0/0 do banco e trocar a credencial (a senha do banco apareceu num print); banco/servico no plano gratuito? (banco free expira em 30 dias; importar a base real exige >= 2 GB).
+- PROXIMO (Mario, 10/11/2026): ele traz a pasta model do PC da empresa e importa; depois portar Programacao e Produtividade/Justificativas.
 - Repositorio Git na raiz (branch main, `core.autocrlf=false`, `.gitattributes` forca LF). Dados de exemplo do front anonimizados (exemplo.com.br).
 - Deploy: `Dockerfile` (php:8.3-apache, raiz php/public, porta $PORT) + `render.yaml` (Postgres 16 basic-1gb + web standard 2 GB, regiao virginia) + `docker/entrypoint.sh` (config/route cache + `spark:instalar-schema`, que so cria tabelas se o banco estiver vazio). `trustProxies(*)` ligado: sem ele o bloqueio por IP trancaria todos atras do proxy. Imagem testada localmente contra banco vazio (09/11/2026).
 - APP_KEY no painel do Render (`php artisan key:generate --show`); 1o admin pelo Shell do Render (`spark:admin-semente`).
