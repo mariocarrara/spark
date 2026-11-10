@@ -16,3 +16,4 @@ legado-powershell/geo
 legado-powershell/controller
 migracao/amostra
 **/*.log
+php/storage/app/cache/*

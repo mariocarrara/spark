@@ -31,7 +31,8 @@ RUN cd php && composer dump-autoload --optimize --no-dev \
 
 # Apache: raiz em php/public, porta vinda do Render ($PORT), sem assinatura de versao
 RUN sed -ri 's#/var/www/html#/var/www/spark/php/public#g' /etc/apache2/sites-available/000-default.conf \
- && printf '<Directory /var/www/spark/php/public>\n  AllowOverride All\n  Require all granted\n</Directory>\nServerTokens Prod\nServerSignature Off\nTimeout 3600\n' > /etc/apache2/conf-enabled/spark.conf
+ && printf '<Directory /var/www/spark/php/public>\n  AllowOverride All\n  Require all granted\n</Directory>\nServerTokens Prod\nServerSignature Off\nTimeout 3600\nAllowEncodedSlashes NoDecode\n' > /etc/apache2/conf-enabled/spark.conf \
+ && sed -ri 's#</VirtualHost>#  AllowEncodedSlashes NoDecode\n</VirtualHost>#' /etc/apache2/sites-available/000-default.conf
 
 COPY docker/entrypoint.sh /usr/local/bin/spark-entrypoint
 RUN chmod +x /usr/local/bin/spark-entrypoint

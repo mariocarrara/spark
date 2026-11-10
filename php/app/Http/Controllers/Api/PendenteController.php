@@ -17,14 +17,10 @@ class PendenteController extends Controller
         'metas' => [],
         'justificativas' => [],
         'prefeituras' => [],
-        'ajustes' => [],
-        'manutencao/os' => [],
-        'manutencao/localidades-mapa' => ['porAlimentador' => [], 'porMunicipio' => []],
         'logistica/equipes' => [],
         'logistica/programacoes' => [],
         'logistica/os' => [],
         'logistica/vinculos' => ['vinculos' => [], 'estatisticas' => []],
-        'cadastros/conjuntos/mapa' => [],
     ];
 
     public function vazio(string $rota): JsonResponse

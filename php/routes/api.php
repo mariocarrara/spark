@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\EquipeController;
 use App\Http\Controllers\Api\FeriadoController;
@@ -7,6 +8,7 @@ use App\Http\Controllers\Api\ImportacaoController;
 use App\Http\Controllers\Api\ImportacaoLegadoController;
 use App\Http\Controllers\Api\IndisponibilidadeController;
 use App\Http\Controllers\Api\ListaController;
+use App\Http\Controllers\Api\ManutencaoController;
 use App\Http\Controllers\Api\PendenteController;
 use App\Http\Controllers\Api\PermissaoController;
 use App\Http\Controllers\Api\ProgramacaoController;
@@ -63,6 +65,15 @@ Route::middleware('auth:api')->group(function () {
     Route::delete('/indisponibilidades/{id}', [IndisponibilidadeController::class, 'destroy']);
 
     Route::get('/importacao/log', [ImportacaoController::class, 'log']);
+
+    // Mapa de Manutencao
+    Route::get('/manutencao/os', [ManutencaoController::class, 'os']);
+    Route::get('/manutencao/localidades-mapa', [ManutencaoController::class, 'localidadesMapa']);
+    Route::get('/cadastros/conjuntos/mapa', [ManutencaoController::class, 'conjuntosMapa']);
+    Route::get('/ajustes', [AjusteController::class, 'index']);
+    // o numero da OS tem "/" (ex.: AUDTUP1  000304/2026): {osId} aceita barra
+    Route::put('/ajustes/{osId}', [AjusteController::class, 'salvar'])->where('osId', '.+');
+    Route::delete('/ajustes/{osId}', [AjusteController::class, 'remover'])->where('osId', '.+');
 
     // Programacao
     Route::get('/programacao', [ProgramacaoController::class, 'index']);
