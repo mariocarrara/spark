@@ -10521,7 +10521,80 @@ function viewCadastros(){
 }
 
 function cadastroGridHtml(){
-  return cadastroAcoesHtml() + cadastroGridHtmlCore();
+  return equipesSemCadastroBannerHtml() + cadastroAcoesHtml() + cadastroGridHtmlCore();
+}
+
+/* ---------------- v3.16.5 - equipes que aparecem nas OS mas NAO estao no cadastro (so no sistema novo) ----------------
+   Sem cadastro a equipe nao entra na Produtividade (a arvore parte do cadastro: Departamento > Regional > Polo).
+   O servidor sugere polo/regional pelo alimentador mais frequente das OS da equipe; o usuario confere e cadastra em lote.
+   O cadastro e o de-para equipe -> polo (ex.: as equipes de plantao do SIGOD, BRAPL01... -> polo). */
+let equipesSemCadastro = null;      // null = ainda nao carregado
+function equipesSemCadastroAtivo(){ return cadastroBaseAtiva==="equipes" && !cadastroVerExcluidos && typeof API_BACKEND!=="undefined" && API_BACKEND==="laravel"; }
+function equipesSemCadastroBannerHtml(){
+  if(!equipesSemCadastroAtivo() || !equipesSemCadastro || !equipesSemCadastro.length) return "";
+  const os = equipesSemCadastro.reduce((s,e)=>s+e.os,0);
+  const pl = equipesSemCadastro.filter(e=>e.plantao).length;
+  return `<div class="note" id="semCadastroBanner" style="margin-bottom:10px; background:var(--warn-bg,#fff4e0);">${ic("info")}<div style="flex:1;">
+    <b>${equipesSemCadastro.length} códigos de equipe aparecem nas OS mas não estão no cadastro</b> (${os.toLocaleString("pt-BR")} OS${pl?`, ${pl} de plantão`:""}).
+    Sem cadastro elas ficam fora da Produtividade.
+    <button class="btn btn-primary btn-sm" style="margin-left:8px;" onclick="abrirEquipesSemCadastro()">Ver e cadastrar</button></div></div>`;
+}
+async function carregarEquipesSemCadastro(){
+  if(!equipesSemCadastroAtivo()) return;
+  try{ equipesSemCadastro = await apiGet("/equipes/sem-cadastro"); }catch(e){ equipesSemCadastro = []; }
+  const w = document.getElementById("cadastroGridWrap");
+  if(w && equipesSemCadastroAtivo() && !document.getElementById("semCadastroBanner")) w.insertAdjacentHTML("afterbegin", equipesSemCadastroBannerHtml());
+}
+function abrirEquipesSemCadastro(){
+  const lista = equipesSemCadastro || [];
+  const linhas = lista.map((e,i)=>`<tr>
+      <td><input type="checkbox" class="semCadChk" data-i="${i}" ${e.poloSugerido?"checked":""}></td>
+      <td><b>${escapeHtml(e.id)}</b>${e.plantao?` <span style="font-size:11px; padding:1px 6px; border-radius:8px; background:var(--accent); color:#fff;">plantão</span>`:""}</td>
+      <td class="num">${e.os.toLocaleString("pt-BR")}</td><td>${escapeHtml(e.origens||"")}</td>
+      <td><input id="semCadPolo${i}" value="${escapeHtml(e.poloSugerido||"")}" placeholder="polo" style="width:150px;"></td>
+      <td><input id="semCadReg${i}" value="${escapeHtml(e.regionalSugerida||"")}" placeholder="regional" style="width:100px;"></td></tr>`).join("");
+  openModal(`
+    <h2>Equipes sem cadastro</h2>
+    <p class="modal-sub">Polo e regional vêm do alimentador mais frequente das OS de cada equipe — confira antes de cadastrar.
+      As de plantão (código terminando em PL + número) entram com o tipo "Plantão". Depois dá para completar o resto na tabela de Equipes.</p>
+    <div id="semCadErro"></div>
+    <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+      <button class="btn btn-ghost btn-sm" onclick="marcarSemCadastro('todas')">Marcar todas</button>
+      <button class="btn btn-ghost btn-sm" onclick="marcarSemCadastro('plantao')">Só plantão</button>
+      <button class="btn btn-ghost btn-sm" onclick="marcarSemCadastro('nenhuma')">Desmarcar</button>
+    </div>
+    <div class="table-wrap" style="max-height:52vh; overflow:auto;"><table><thead><tr><th></th><th>Código</th><th>OS</th><th>Origem</th><th>Polo</th><th>Regional</th></tr></thead>
+      <tbody>${linhas}</tbody></table></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Fechar</button>
+      <button class="btn btn-primary" id="semCadBtn" onclick="cadastrarEquipesSelecionadas()">${ic("check")} Cadastrar selecionadas</button>
+    </div>`);
+}
+function marcarSemCadastro(modo){
+  document.querySelectorAll(".semCadChk").forEach(c=>{ const e = equipesSemCadastro[+c.dataset.i]; c.checked = modo==="todas" || (modo==="plantao" && e.plantao); });
+}
+async function cadastrarEquipesSelecionadas(){
+  const sel = [...document.querySelectorAll(".semCadChk")].filter(c=>c.checked).map(c=>{
+    const i = +c.dataset.i;
+    return { id: equipesSemCadastro[i].id, polo: document.getElementById("semCadPolo"+i).value.trim(), regional: document.getElementById("semCadReg"+i).value.trim() };
+  });
+  const erro = document.getElementById("semCadErro");
+  if(!sel.length){ erro.innerHTML = `<div class="login-error">${ic("info")}<div>Marque pelo menos uma equipe.</div></div>`; return; }
+  const semPolo = sel.filter(e=>!e.polo).length;
+  if(semPolo && !window.confirm(`${semPolo} equipe(s) marcada(s) estão sem polo — cadastrar assim mesmo?`)) return;
+  const btn = document.getElementById("semCadBtn"); if(btn) btn.disabled = true;
+  try{
+    const r = await apiPost("/equipes/cadastrar-varias", { equipes: sel });
+    closeModal();
+    toast(`${r.criadas} equipe(s) cadastrada(s).`);
+    try{ state.equipes = await apiGet("/equipes"); }catch(e){}
+    equipesSemCadastro = null;
+    await carregarCadastroPagina();
+  }catch(err){
+    if(btn) btn.disabled = false;
+    let t = err.message; const m = t.match(/\(([^)]+)\)\s*$/); if(m) t = m[1];
+    erro.innerHTML = `<div class="login-error">${ic("info")}<div>${escapeHtml(t)}</div></div>`;
+  }
 }
 function cadastroGridHtmlCore(){
   const cfg = CADASTROS_BASES[cadastroBaseAtiva];
@@ -10645,6 +10718,7 @@ async function carregarCadastroPagina(){
       cadastroTotal = todos.length;
       const inicio = (cadastroPagina-1)*CADASTRO_TAMANHO_PAGINA;
       cadastroRegistros = todos.slice(inicio, inicio+CADASTRO_TAMANHO_PAGINA);
+      if(equipesSemCadastro===null) carregarEquipesSemCadastro();   // v3.16.5 - aviso de equipes sem cadastro (sistema novo)
     } else if(!API_ONLINE){
       // Vão/Proteção/VERA não têm dados de exemplo no protótipo offline
       // (são as bases novas, sem seed local) — precisam do Controller de

@@ -54,6 +54,8 @@ Route::middleware('auth:api')->group(function () {
 
     // Cadastros
     Route::get('/equipes', [EquipeController::class, 'index']);
+    Route::get('/equipes/sem-cadastro', [EquipeController::class, 'semCadastro']);
+    Route::post('/equipes/cadastrar-varias', [EquipeController::class, 'cadastrarVarias']);
     Route::post('/equipes', [EquipeController::class, 'store']);
     Route::put('/equipes/{id}', [EquipeController::class, 'update']);
 
