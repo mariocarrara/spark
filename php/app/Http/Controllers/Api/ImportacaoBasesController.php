@@ -23,7 +23,7 @@ class ImportacaoBasesController extends Controller
 {
     /** coluna, tipo, obrigatorio, apelidos (ImportSchemas do legado). */
     private const SCHEMAS = [
-        'Metas' => [['CodigoEquipe', 'texto', true], ['AnoMes', 'anomes', true], ['MetaMensal', 'numero', true], ['Servico', 'texto', false]],
+        'Metas' => [['CodigoEquipe', 'texto', true], ['AnoMes', 'anomes', true], ['MetaMensal', 'numero', true], ['Servico', 'texto', false], ['Polo', 'texto', false]],
         'Equipes' => [['CodigoEquipe', 'texto', true], ['TipoEquipe', 'texto', true], ['Polo', 'texto', true], ['Regional', 'texto', true],
             ['Departamento', 'texto', true], ['ProprioTerceiro', 'texto', true], ['EquipePoda', 'booleano', true], ['BaseLat', 'numero', false], ['BaseLng', 'numero', false]],
         'Prefeituras' => [['Municipio', 'texto', true], ['ContatoNome', 'texto', true], ['Email', 'email', true], ['Telefone', 'texto', false]],
@@ -124,8 +124,18 @@ class ImportacaoBasesController extends Controller
     {
         $feriados = DB::table('feriados')->pluck('data')->map(fn ($d) => substr((string) $d, 0, 10))->flip();
         $porChave = [];
+        // v3.16.5 - meta de PLANTAO por polo: linha "Plantão" com coluna Polo vira a meta da linha "Plantão — <polo>" da Produtividade.
+        // O nome do polo e casado com o cadastro de equipes sem diferenca de maiuscula/acento (fica igual ao cadastro).
+        $polos = [];
+        foreach (DB::table('equipes')->whereNotNull('polo')->distinct()->pluck('polo') as $p) {
+            $polos[self::chaveCabecalho((string) $p)] = $p;
+        }
         foreach ($linhas as $row) {
             $equipe = trim((string) self::campo($row, 'CodigoEquipe'));
+            $polo = trim((string) self::campo($row, 'Polo'));
+            if ($polo !== '' && preg_match('/^plant/i', self::chaveCabecalho($equipe))) {
+                $equipe = 'Plantão — '.($polos[self::chaveCabecalho($polo)] ?? mb_strtoupper($polo));
+            }
             $anoMes = trim((string) self::campo($row, 'AnoMes'));
             $tipo = preg_match('/faixa|limpeza/i', (string) self::campo($row, 'Servico')) ? 'faixa' : 'poda';
             $mensal = (float) str_replace(',', '.', (string) self::campo($row, 'MetaMensal'));

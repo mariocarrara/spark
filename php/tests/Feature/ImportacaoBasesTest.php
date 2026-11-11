@@ -71,6 +71,20 @@ class ImportacaoBasesTest extends TestCase
         $this->assertEquals(300, (float) DB::table('metas')->where('tipo', 'poda')->value('meta_mensal'));
     }
 
+    public function test_meta_de_plantao_por_polo(): void
+    {
+        DB::table('equipes')->insert([['id' => 'BRAPL01', 'nome' => 'BRAPL01', 'polo' => 'BRAGANÇA PAULISTA'], ['id' => 'ASSPL01', 'nome' => 'ASSPL01', 'polo' => 'ASSIS']]);
+        $this->enviar('confirmar', 'Metas', [
+            ['CodigoEquipe' => 'Plantão', 'AnoMes' => '2026-01', 'MetaMensal' => '102', 'Polo' => 'Braganca paulista'],
+            ['CodigoEquipe' => 'Plantão', 'AnoMes' => '2026-01', 'MetaMensal' => '136', 'Polo' => 'ASSIS'],
+            ['CodigoEquipe' => 'PLANTAO', 'AnoMes' => '2026-01', 'MetaMensal' => '50', 'Polo' => 'Polo Novo'],
+            ['CodigoEquipe' => 'Plantão', 'AnoMes' => '2026-01', 'MetaMensal' => '7', 'Polo' => ''],   // sem polo: como antes
+        ])->assertOk()->assertJson(['processados' => 4]);
+        $metas = DB::table('metas')->where('ano_mes', '2026-01')->pluck('meta_mensal', 'equipe_id')->map(fn ($v) => (float) $v)->all();
+        ksort($metas);
+        $this->assertSame(['Plantão' => 7.0, 'Plantão — ASSIS' => 136.0, 'Plantão — BRAGANÇA PAULISTA' => 102.0, 'Plantão — POLO NOVO' => 50.0], $metas);
+    }
+
     public function test_equipes_nao_reativa_equipe_desativada(): void
     {
         DB::table('equipes')->insert(['id' => 'EQ-OFF', 'nome' => 'EQ-OFF', 'ativo' => false]);

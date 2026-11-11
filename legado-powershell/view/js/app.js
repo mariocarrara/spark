@@ -5150,11 +5150,11 @@ let prodServico = "poda";            // poda | faixa
 function setProdServico(v){ prodServico = (v==="faixa") ? "faixa" : "poda"; render(); }
 function metaTipo(m){ return (m && m.tipo==="faixa") ? "faixa" : "poda"; }
 function prodUnidade(tipo){ return (tipo||prodServico)==="faixa" ? "km" : "un."; }
-let _prodExecCache = {}, _prodExecFonte = null;
+let _prodExecCache = {}, _prodExecFonte = null, _prodExecEquipes = null;
 function prodExecucao(tipo){
   tipo = tipo || prodServico;
   const fonte = osProducaoBase();
-  if(_prodExecFonte!==fonte){ _prodExecCache = {}; _prodExecFonte = fonte; }
+  if(_prodExecFonte!==fonte || _prodExecEquipes!==state.equipes){ _prodExecCache = {}; _prodExecFonte = fonte; _prodExecEquipes = state.equipes; }   // v3.16.5 - equipes mudam o plantao por polo
   if(_prodExecCache[tipo]) return _prodExecCache[tipo];
   const m = {};
   let temOS = false;
@@ -5165,6 +5165,9 @@ function prodExecucao(tipo){
     temOS = true;
     const d = String(o.dataExecucao).slice(0,10);
     ((m[o.equipeId] = m[o.equipeId] || {})[d] = (m[o.equipeId][d]||0) + q);
+    // v3.16.5 - equipe de plantao: soma tambem na linha "Plantão — <polo>"
+    const pl = plantaoGrupos().porEquipe[o.equipeId];
+    if(pl) ((m[pl] = m[pl] || {})[d] = (m[pl][d]||0) + q);
   });
   if(tipo==="poda" && !temOS && !API_ONLINE){
     const dias = ["2026-09-21","2026-09-22","2026-09-23","2026-09-24"];
@@ -5224,6 +5227,31 @@ function prodColunas(dias){
   const nomes = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
   return [{ grupo:"Meses", cols: Object.keys(porMes).sort().map(m=>({ rotulo:`${nomes[parseInt(m.slice(5,7),10)-1]}/${m.slice(0,4)}`, dias: porMes[m], anoMes:m, comMetaMes:true })) }];
 }
+/* v3.16.5 - PLANTAO POR POLO: as equipes de plantao (codigo ...PL + numero, ou tipo "Plantão" no cadastro) de um polo
+   somam numa linha so, "Plantão — <polo>", com a meta de plantao daquele polo (metas com equipeId = "Plantão — <polo>").
+   O polo vem do cadastro de equipes (o de-para equipe -> polo). */
+const PLANTAO_PREFIXO = "Plantão — ";
+function equipeEhPlantao(e){
+  if(!e) return false;
+  return /PL\d+$/i.test(String(e.id||"")) || /PLANT/i.test(String(e.tipoEquipe||"").normalize("NFD").replace(/[̀-ͯ]/g,""));
+}
+function plantaoIdDoPolo(polo){ return PLANTAO_PREFIXO + (polo || "Sem polo"); }
+let _plantaoGrupos = null, _plantaoFonte = null;
+function plantaoGrupos(){
+  // equipeId da equipe de plantao -> id da linha "Plantão — <polo>" (recalcula quando a lista de equipes muda)
+  if(_plantaoFonte===state.equipes && _plantaoGrupos) return _plantaoGrupos;
+  const porEquipe = {}, linhas = {};
+  (state.equipes||[]).forEach(e=>{
+    if(!equipeEhPlantao(e)) return;
+    const id = plantaoIdDoPolo(e.polo);
+    porEquipe[e.id] = id;
+    const l = linhas[id] || (linhas[id] = { id, nome:id, polo:e.polo, regional:e.regional, departamento:e.departamento, proprioTerceiro:e.proprioTerceiro,
+      tipoEquipe:"Plantão", equipePoda:true, ativo:true, plantao:true, membros:[] });
+    l.membros.push(e);
+  });
+  _plantaoGrupos = { porEquipe, linhas }; _plantaoFonte = state.equipes;
+  return _plantaoGrupos;
+}
 function prodEquipesFiltradas(){
   const f = prodFiltro;
   const ok = (set, v)=> !set.size || set.has(String(v||""));
@@ -5233,10 +5261,13 @@ function prodEquipesFiltradas(){
   let diasSel = null, exs = null;
   if(inativas){ diasSel = prodDiasSelecionados(); exs = [prodExecucao("poda"), prodExecucao("faixa")]; }
   const produziu = e => exs.some(m=>{ const x = m[e.id]; return x && diasSel.some(d=>x[d]>0); });
-  return (state.equipes||[]).filter(e=>
-    (equipeAtiva(e) || produziu(e)) && ok(f.polo, e.polo) && ok(f.regional, e.regional) && ok(f.departamento, e.departamento) &&
-    ok(f.proprioTerceiro, e.proprioTerceiro) && ok(f.equipe, e.id) &&
-    (!f.equipePoda.size || (f.equipePoda.has("sim") && !!e.equipePoda) || (f.equipePoda.has("nao") && !e.equipePoda)));
+  const filtroOk = e => ok(f.polo, e.polo) && ok(f.regional, e.regional) && ok(f.departamento, e.departamento) && ok(f.proprioTerceiro, e.proprioTerceiro) &&
+    (!f.equipePoda.size || (f.equipePoda.has("sim") && !!e.equipePoda) || (f.equipePoda.has("nao") && !e.equipePoda));
+  const normais = (state.equipes||[]).filter(e=> !equipeEhPlantao(e) && (equipeAtiva(e) || produziu(e)) && filtroOk(e) && ok(f.equipe, e.id));
+  // v3.16.5 - plantao: 1 linha por polo (entra se alguma equipe dela esta ativa ou produziu; filtro de equipe vale pela linha ou por qualquer membro)
+  const plantoes = Object.values(plantaoGrupos().linhas).filter(l=>
+    l.membros.some(e=>equipeAtiva(e) || produziu(e)) && filtroOk(l) && (!f.equipe.size || f.equipe.has(l.id) || l.membros.some(e=>f.equipe.has(String(e.id)))));
+  return normais.concat(plantoes);
 }
 function prodCelula(equipeId, col){
   const ex = prodExecucao()[equipeId] || {};
@@ -8846,7 +8877,7 @@ async function prefSalvarNoServidor(){
 const SCHEMAS = {
   // v3.6.0 - listas de prioridade da engenharia (definido em rank.js)
   "Rank de prioridade": RANK_SCHEMA,
-  "Metas": { tipo:"excel", apiBase:"Metas", campos:[["CodigoEquipe","Texto","Sim"],["AnoMes","Texto (AAAA-MM)","Sim"],["MetaMensal","Número (poda: unidades; faixa: km lineares)","Sim"],["Servico","Texto: Poda ou Limpeza de faixa (vazio = Poda)","Não"]] },
+  "Metas": { tipo:"excel", apiBase:"Metas", campos:[["CodigoEquipe","Texto","Sim"],["AnoMes","Texto (AAAA-MM)","Sim"],["MetaMensal","Número (poda: unidades; faixa: km lineares)","Sim"],["Servico","Texto: Poda ou Limpeza de faixa (vazio = Poda)","Não"],["Polo","Texto — só nas linhas do Plantão: a meta vira a do \"Plantão — <polo>\" da Produtividade (sistema novo)","Não"]] },
   "Equipes": { tipo:"excel", apiBase:"Equipes", campos:[["CodigoEquipe","Texto","Sim"],["TipoEquipe","Texto","Sim"],["Polo","Texto","Sim"],["Regional","Texto","Sim"],["Departamento","Texto","Sim"],["ProprioTerceiro","Texto","Sim"],["EquipePoda","true/false","Sim"],["BaseLat","Número","Não"],["BaseLng","Número","Não"],["Ativa","true/false (Não = equipe inativa: some da Produtividade e não recebe programação; em branco mantém o que já está)","Não"]] },
   // v2.13.0 - cabeçalhos iguais aos arquivos reais (d.Vao.xlsx ~793 mil linhas,
   // d.Protecao.xlsx ~214 mil). Sobem como arquivo cru em streaming (grande:true,
