@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use Symfony\Component\Process\PhpExecutableFinder;
 use Symfony\Component\Process\Process;
 
 /**
@@ -91,20 +92,35 @@ class ImportacaoLegadoController extends Controller
         $minhaLinha = (array) DB::table('usuarios')->where('id', $eu->id)->first();
         $minhasPerms = DB::table('permissoes')->where('usuario_id', $eu->id)->get()->map(fn ($p) => (array) $p)->all();
 
-        $c = config('database.connections.pgsql');
-        $dsn = "pgsql:host={$c['host']};port={$c['port']};dbname={$c['database']}".(! empty($c['sslmode']) ? ";sslmode={$c['sslmode']}" : '');
+        // configuracao JA interpretada pelo Laravel (no Render o banco vem de DB_URL; os campos soltos ficam no padrao)
+        $c = DB::connection()->getConfig();
+        $dsn = "pgsql:host={$c['host']};port=".($c['port'] ?: 5432).";dbname={$c['database']}".(! empty($c['sslmode']) ? ";sslmode={$c['sslmode']}" : '');
         $script = config('spark.migrar_script');
         $env = ['SPARK_DB_PASS' => (string) $c['password']];
         if (PHP_OS_FAMILY === 'Windows') {
             // o "artisan serve" repassa um ambiente reduzido; sem SystemRoot o Windows nao abre socket (erro 10106)
             $env['SystemRoot'] = getenv('SystemRoot') ?: (getenv('SYSTEMROOT') ?: 'C:\\Windows');
         }
-        $proc = new Process([PHP_BINARY, '-d', 'memory_limit=-1', $script, $pasta, $dsn, $c['username']], dirname($script),
-            $env, null, (float) config('spark.legado_timeout_s'));
+        // PHP_BINARY so vale no PHP de linha de comando; no Apache (Render) ele aponta para o proprio Apache
+        $php = (new PhpExecutableFinder)->find(false);
+        if (! $php) {
+            File::deleteDirectory($pasta);
+
+            return response()->json(['erro' => 'Não encontrei o executável do PHP no servidor para rodar a importação.'], 500);
+        }
 
         @set_time_limit(0);
-        $proc->run();
-        $log = trim($proc->getOutput()."\n".$proc->getErrorOutput());
+        try {
+            $proc = new Process([$php, '-d', 'memory_limit=-1', $script, $pasta, $dsn, (string) $c['username']], dirname($script),
+                $env, null, (float) config('spark.legado_timeout_s'));
+            $proc->run();
+            $log = trim($proc->getOutput()."\n".$proc->getErrorOutput());
+        } catch (\Throwable $e) {
+            report($e);
+            File::deleteDirectory($pasta);
+
+            return response()->json(['erro' => 'A importação não conseguiu começar e nada foi alterado. Motivo: '.$e->getMessage()], 500);
+        }
         File::deleteDirectory($pasta);
 
         if (! $proc->isSuccessful()) {

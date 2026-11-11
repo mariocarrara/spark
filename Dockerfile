@@ -27,7 +27,7 @@ COPY migracao/schema.sql migracao/migrar.php migracao/
 
 RUN cd php && composer dump-autoload --optimize --no-dev \
  && mkdir -p storage/app/legado storage/framework/cache storage/framework/views storage/logs bootstrap/cache \
- && chown -R www-data:www-data storage bootstrap/cache
+ && chown -R www-data:www-data storage bootstrap/cache && chmod -R u+rwX storage bootstrap/cache
 
 # Apache: raiz em php/public, porta vinda do Render ($PORT), sem assinatura de versao
 RUN sed -ri 's#/var/www/html#/var/www/spark/php/public#g' /etc/apache2/sites-available/000-default.conf \
