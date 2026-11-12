@@ -436,6 +436,10 @@ CREATE TABLE rede_feicoes (
 CREATE INDEX rede_feicoes_gix ON rede_feicoes USING GIST (geom);
 CREATE INDEX rede_feicoes_alim_ix ON rede_feicoes (camada, alimentador, id);
 
+-- OS x APP / Reserva Legal (o app_rl_indice.json do legado): distancia em metros ate a divisa do poligono mais proximo
+-- (negativa = DENTRO, profundidade); so as OS dentro ou a ate 100 m. Recalculado por Services/AppRl.
+CREATE TABLE app_rl_indice (os_id TEXT PRIMARY KEY, app NUMERIC, rl NUMERIC);
+
 CREATE TABLE rede_alimentadores (                    -- o _index.json do legado, por camada
   camada      TEXT NOT NULL,
   alimentador TEXT NOT NULL,

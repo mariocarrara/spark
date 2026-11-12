@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AjusteController;
+use App\Http\Controllers\Api\AppRlController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CadastroController;
 use App\Http\Controllers\Api\CamadasController;
@@ -115,6 +116,12 @@ Route::middleware('auth:api')->group(function () {
     // o numero da OS tem "/" (ex.: AUDTUP1  000304/2026): {osId} aceita barra
     Route::put('/ajustes/{osId}', [AjusteController::class, 'salvar'])->where('osId', '.+');
     Route::delete('/ajustes/{osId}', [AjusteController::class, 'remover'])->where('osId', '.+');
+
+    // OS x APP / Reserva Legal
+    Route::get('/apprl/indice', [AppRlController::class, 'indice']);
+    Route::get('/apprl/config', [AppRlController::class, 'config']);
+    Route::put('/apprl/config', [AppRlController::class, 'salvarConfig']);
+    Route::post('/apprl/recalcular', [AppRlController::class, 'recalcular']);
 
     // Historico de podas por plano
     Route::get('/historico/planos', [HistoricoController::class, 'planos']);

@@ -35,10 +35,18 @@ class InstalarSchema extends Command
                 CREATE INDEX IF NOT EXISTS rede_feicoes_alim_ix ON rede_feicoes (camada, alimentador, id);
                 CREATE TABLE IF NOT EXISTS rede_alimentadores (camada TEXT NOT NULL, alimentador TEXT NOT NULL, nome TEXT, nomes JSONB,
                     trechos INT NOT NULL DEFAULT 0, metros NUMERIC, atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (camada, alimentador));
+                CREATE TABLE IF NOT EXISTS app_rl_indice (os_id TEXT PRIMARY KEY, app NUMERIC, rl NUMERIC);
                 -- v3.17: as tabelas antigas da rede nunca receberam dados (a geo/ nao tinha sido portada)
                 DO \$\$ BEGIN
-                  IF to_regclass('rede_trechos') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM rede_trechos) THEN DROP TABLE rede_trechos; END IF;
-                  IF to_regclass('areas_protegidas') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM areas_protegidas) THEN DROP TABLE areas_protegidas; END IF;
+                  -- EXECUTE dinamico: o PL/pgSQL nao pode citar a tabela direto (quebra quando ela ja nao existe)
+                  DECLARE t TEXT; vazia BOOLEAN; BEGIN
+                    FOREACH t IN ARRAY ARRAY['rede_trechos', 'areas_protegidas'] LOOP
+                      IF to_regclass(t) IS NOT NULL THEN
+                        EXECUTE format('SELECT NOT EXISTS (SELECT 1 FROM %I)', t) INTO vazia;
+                        IF vazia THEN EXECUTE format('DROP TABLE %I', t); END IF;
+                      END IF;
+                    END LOOP;
+                  END;
                 END \$\$;");
             $this->info('Banco ja instalado; nada a fazer.');
 

@@ -9973,6 +9973,7 @@ async function executarImportarCamada(){
       ${erros.length ? `<div class="table-wrap" style="max-height:30vh; overflow:auto; margin-top:8px;"><table><thead><tr><th>Arquivo / alimentador</th><th>Problema</th></tr></thead><tbody>
         ${erros.slice(0,300).map(e=>`<tr><td>${escapeHtml(e.arquivo)}</td><td>${escapeHtml(e.erro)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
     _kmRedeCache = null;
+    if((cfg.camada==="app" || cfg.camada==="reserva_legal") && alims > 0 && typeof aprlRecalcularSilencioso==="function") aprlRecalcularSilencioso();
     await abrirGerenciarCamadas();
   }catch(err){
     let t = err.message; const m = t.match(/\(([^)]+)\)\s*$/); if(m) t = m[1];

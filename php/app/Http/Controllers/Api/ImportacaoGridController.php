@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AppRl;
 use App\Services\Auditoria;
 use App\Services\Importacao\ImportadorGrids;
 use Illuminate\Http\Request;
@@ -122,6 +123,11 @@ class ImportacaoGridController extends Controller
                 DB::table('importacoes_log')->insert(['id' => $log['id'], 'data_hora' => now(), 'usuario_id' => $eu->id, 'base' => $baseLog,
                     'arquivo_origem' => $nomes, 'registros_processados' => $log['registrosProcessados'], 'registros_com_erro' => $log['registrosComErro']]);
                 Auditoria::registrar('importar', 'os', $segmento, $eu->id, ['arquivos' => $nomes, 'total' => $res['totalPlotadas']], $r->ip());
+                // como o legado: toda carga da base atual de OS refaz o OS x APP/RL (o historico nao entra no indice)
+                if ($segmento !== 'podas-historico' && DB::table('rede_feicoes')->whereIn('camada', ['app', 'rl'])->exists()) {
+                    $linha(['tipo' => 'progresso', 'fase' => 'gravando', 'arquivo' => 'medindo a distancia das OS ate APP e RL', 'percentual' => 99]);
+                    $res['appRl'] = AppRl::recalcular();
+                }
                 $linha(['tipo' => 'final', 'resumo' => $res, 'log' => $log]);
             } catch (\Throwable $e) {
                 report($e);
