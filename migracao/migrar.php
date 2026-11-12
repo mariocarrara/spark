@@ -73,6 +73,68 @@ function unico(array $itens, callable $chave): array {   // ultimo registro por 
     return array_values($m);
 }
 
+/**
+ * Le um arquivo JSON que e uma LISTA ([{...},{...}]) item a item, sem carregar o arquivo nem a lista inteira na memoria
+ * (o manutencao_os.json tem ~100 MB; inteiro, o PHP passava de 600 MB e o servidor pequeno do Render caia).
+ * Percorre em pedacos de 1 MB e pula direto para os caracteres que importam ({ } [ ] " \).
+ */
+function lerJsonItens(string $arq): Generator {
+    if (!is_file($arq)) return;
+    $h = fopen($arq, 'rb');
+    $buf = fread($h, 3);
+    if ($buf !== "\xEF\xBB\xBF") { $resto = $buf; } else { $resto = ''; }
+    $buf = $resto;
+    $prof = 0; $emTexto = false; $escapa = false; $ini = -1; $pos = 0; $comecou = false;
+    while (true) {
+        $len = strlen($buf);
+        while ($pos < $len) {
+            if ($emTexto) {
+                $p = strcspn($buf, "\"\\", $pos);          // pula o miolo do texto
+                $pos += $p;
+                if ($pos >= $len) break;
+                if ($buf[$pos] === '\\') { $pos += 2; continue; }   // caractere escapado
+                $emTexto = false; $pos++; continue;
+            }
+            $p = strcspn($buf, "{}[]\"", $pos);
+            $pos += $p;
+            if ($pos >= $len) break;
+            $c = $buf[$pos];
+            if ($c === '"') { $emTexto = true; $pos++; continue; }
+            if ($c === '[' || $c === '{') {
+                if (!$comecou) { $comecou = true; if ($c === '[') { $pos++; continue; } }   // abre a lista de fora
+                $prof++;
+                if ($prof === 1) $ini = $pos;
+            } else {
+                $prof--;
+                if ($prof === 0 && $ini >= 0) {
+                    $item = json_decode(substr($buf, $ini, $pos - $ini + 1), true, 512, JSON_INVALID_UTF8_SUBSTITUTE);
+                    if ($item !== null) yield $item;
+                    $ini = -1;
+                }
+                if ($prof < 0) { fclose($h); return; }   // fechou a lista de fora
+            }
+            $pos++;
+        }
+        if (feof($h)) break;
+        // guarda so o pedaco ainda em aberto (o item atual) e le mais
+        $corte = $ini >= 0 ? $ini : min($pos, strlen($buf));
+        $buf = substr($buf, $corte) . fread($h, 1048576);
+        $pos -= $corte;
+        if ($ini >= 0) $ini = 0;
+    }
+    fclose($h);
+}
+
+/** Versao em fluxo do unico(): 1a passada conta as chaves; 2a entrega so a ULTIMA ocorrencia de cada uma. */
+function unicoArquivo(string $arq, callable $chave): Generator {
+    $vezes = [];
+    foreach (lerJsonItens($arq) as $i) { $k = (string)$chave($i); $vezes[$k] = ($vezes[$k] ?? 0) + 1; }
+    foreach (lerJsonItens($arq) as $i) {
+        $k = (string)$chave($i);
+        if (--$vezes[$k] === 0) yield $i;
+    }
+}
+
 echo "Limpando tabelas...\n";
 $pdo->exec("TRUNCATE usuarios, permissoes, sessoes, solicitacoes_cadastro, importacoes_log, equipes, metas, feriados,
   indisponibilidades, justificativas, listas_cadastro, esquemas, conjuntos, alimentador_polo, prioridade_ew, ajuda_faq,
@@ -150,16 +212,13 @@ function linhaOs(array $o): array {
         isset($o['previstoPorEsquema']) ? (bool)$o['previstoPorEsquema'] : null, isset($o['localidadePorPoste']) ? (bool)$o['localidadePorPoste'] : null];
 }
 echo "OS (base atual)\n";
-$os = lerJson("$model/manutencao_os.json") ?? [];
-copiar($pdo, 'os', $colsOs, (function () use ($os) { foreach (unico($os, fn($x) => $x['id']) as $o) yield linhaOs($o); })(), 'os (base atual)');
-unset($os);
+// em fluxo: o arquivo tem ~100 MB (ver lerJsonItens)
+copiar($pdo, 'os', $colsOs, (function () use ($model) { foreach (unicoArquivo("$model/manutencao_os.json", fn($x) => $x['id']) as $o) yield linhaOs($o); })(), 'os (base atual)');
 echo "OS (historico por plano)\n";
 foreach (glob("$model/historico_podas_20*.json") as $arq) {
     if (!preg_match('/historico_podas_(\d{4})\.json$/', $arq, $m)) continue;
     $plano = (int)$m[1];
-    $h = lerJson($arq) ?? [];
-    copiar($pdo, 'os_historico', array_merge($colsOs, ['plano']), (function () use ($h, $plano) { foreach (unico($h, fn($x) => $x['id']) as $o) yield array_merge(linhaOs($o), [$plano]); })(), "os_historico plano $plano");
-    unset($h);
+    copiar($pdo, 'os_historico', array_merge($colsOs, ['plano']), (function () use ($arq, $plano) { foreach (unicoArquivo($arq, fn($x) => $x['id']) as $o) yield array_merge(linhaOs($o), [$plano]); })(), "os_historico plano $plano");
 }
 copiar($pdo, 'historico_planos', ['plano','total','inicio','fim','atualizado_em','usuario_id','modo','novas','atualizadas','arquivos'],
   (function () use ($model) { foreach (lerJson("$model/historico_podas_meta.json") ?? [] as $p) yield [$p['plano'], $p['total'], $p['inicio'], $p['fim'], nn($p['atualizadoEm'] ?? null), nn($p['usuarioId'] ?? null), nn($p['modo'] ?? null), $p['novas'] ?? null, $p['atualizadas'] ?? null, nn($p['arquivos'] ?? null)]; })());
@@ -184,13 +243,13 @@ if (is_file("$model/programacao_log.jsonl")) copiar($pdo, 'programacao_log', ['p
 // ---------------- rede / protecoes / postes / equipamentos ----------------
 echo "Protecoes, vao, VERA\n";
 copiar($pdo, 'protecoes', ['protecao_id','prot_elemento','protecao2','alimentador','trecho','trecho_t4','zona','plano_easywork','loc'],
-  (function () use ($model) { foreach (lerJson("$model/protecao.json") ?? [] as $p) yield [$p['protecaoId'], nn($p['protElemento'] ?? null), nn($p['protecao2'] ?? null), nn($p['alimentador'] ?? null), nn($p['trecho'] ?? null), nn($p['trechoT4'] ?? null), nn($p['zona'] ?? null), nn($p['planoEasyWork'] ?? null), pt($p['lat'] ?? null, $p['lng'] ?? null)]; })());
+  (function () use ($model) { foreach (lerJsonItens("$model/protecao.json") as $p) yield [$p['protecaoId'], nn($p['protElemento'] ?? null), nn($p['protecao2'] ?? null), nn($p['alimentador'] ?? null), nn($p['trecho'] ?? null), nn($p['trechoT4'] ?? null), nn($p['zona'] ?? null), nn($p['planoEasyWork'] ?? null), pt($p['lat'] ?? null, $p['lng'] ?? null)]; })());
 copiar($pdo, 'protecao_alimentador', ['alimentador','protecao_id'],
   (function () use ($model) { $v = []; foreach (lerJson("$model/protecao_alim.json") ?? [] as $x) { $k = $x['a'] . '|' . $x['p']; if (!isset($v[$k])) { $v[$k] = 1; yield [$x['a'], $x['p']]; } } })());
 copiar($pdo, 'vao', ['protecao_id','polo','regional','postes','rota_km'],
-  (function () use ($model) { foreach (unico(lerJson("$model/vao.json") ?? [], fn($x) => $x['protecaoId']) as $x) yield [$x['protecaoId'], nn($x['polo'] ?? null), nn($x['regional'] ?? null), (int)($x['postes'] ?? 0), $x['rotaKm'] ?? 0]; })());
+  (function () use ($model) { foreach (unicoArquivo("$model/vao.json", fn($x) => $x['protecaoId']) as $x) yield [$x['protecaoId'], nn($x['polo'] ?? null), nn($x['regional'] ?? null), (int)($x['postes'] ?? 0), $x['rotaKm'] ?? 0]; })());
 copiar($pdo, 'vera', ['id_vera','especie','cidade','alimentador','loc'],
-  (function () use ($model) { foreach (unico(lerJson("$model/vera.json") ?? [], fn($x) => $x['idVera']) as $x) yield [$x['idVera'], nn($x['especie'] ?? null), nn($x['cidade'] ?? null), nn($x['alimentador'] ?? null), pt($x['lat'] ?? null, $x['lng'] ?? null)]; })());
+  (function () use ($model) { foreach (unicoArquivo("$model/vera.json", fn($x) => $x['idVera']) as $x) yield [$x['idVera'], nn($x['especie'] ?? null), nn($x['cidade'] ?? null), nn($x['alimentador'] ?? null), pt($x['lat'] ?? null, $x['lng'] ?? null)]; })());
 
 function tsv(string $arq): Generator { if (!is_file($arq)) return; $h = fopen($arq, 'r'); while (($l = fgets($h)) !== false) { $l = rtrim($l, "\r\n"); if ($l !== '') yield explode("\t", $l); } fclose($h); }
 echo "Postes, vao_postes e equipamentos\n";
