@@ -9996,13 +9996,20 @@ const REGISTROS_IO = {
     campos:[["id","OS"],["tipoEquipe","Tipo de equipe"],["equipeId","Equipe"],["alimentador","Alimentador"],["protecaoId","Proteção"],
       ["criadoPor","Criado por"],["criadoEm","Criado em"],["atualizadoPor","Atualizado por"],["atualizadoEm","Atualizado em"]] },
   ajustes_log: { rotulo:"Log dos ajustes", modulo:"manutencao", arquivoLegado:"ajustes_os_log.jsonl", soJson:true },
+  // v3.17.4 - listas, justificativas e indisponibilidades (formato completo do legado, com a marca de excluído)
+  listas: { rotulo:"Listas", modulo:"manutencao", arquivoLegado:"listas_cadastro.json", bool:["ativo","excluido"],
+    campos:[["id","ID"],["lista","Lista"],["nome","Nome"],["ordem","Ordem"],["ativo","Ativo"],["excluido","Excluído"]] },
+  justificativas: { rotulo:"Justificativas", modulo:"produtividade", escrever:"gestaoBases", arquivoLegado:"justificativas.json", bool:["excluido"],
+    campos:[["id","ID"],["data","Data"],["equipeId","Equipe"],["tipo","Tipo"],["texto","Texto"],["autorId","Autor"],["criadoEm","Criado em"],["excluido","Excluído"],["excluidoPor","Excluído por"],["excluidoEm","Excluído em"]] },
+  indisponibilidades: { rotulo:"Indisponibilidades", modulo:"produtividade", escrever:"gestaoBases", arquivoLegado:"indisponibilidades.json", bool:["excluido"],
+    campos:[["id","ID"],["equipeId","Equipe"],["dataInicio","Data início"],["dataFim","Data fim"],["tipo","Tipo"],["texto","Texto"],["autorId","Autor"],["criadoEm","Criado em"],["excluido","Excluído"],["excluidoPor","Excluído por"],["excluidoEm","Excluído em"]] },
 };
 function registrosIoLiberado(){ return API_ONLINE && typeof API_BACKEND!=="undefined" && API_BACKEND==="laravel"; }
 /* Barra com Exportar/Importar de uma base principal + o log dela */
 function registrosIoBarraHtml(base, baseLog){
   if(!registrosIoLiberado()) return "";
   const c = REGISTROS_IO[base], cl = REGISTROS_IO[baseLog];
-  const podeImp = minhaPermissao(c.modulo,"importar") && minhaPermissao(c.modulo,"editar");
+  const podeImp = minhaPermissao(c.escrever || c.modulo,"importar") && minhaPermissao(c.escrever || c.modulo,"editar");
   return `<div style="display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
     <button class="btn btn-export btn-sm" onclick="exportarRegistros('${base}','xlsx')">${ic("download")} Exportar Excel</button>
     <button class="btn btn-export btn-sm" onclick="exportarRegistros('${base}','json')">${ic("download")} Exportar JSON</button>
@@ -10010,6 +10017,18 @@ function registrosIoBarraHtml(base, baseLog){
     <span style="width:1px; height:22px; background:var(--border-hi); margin:0 2px;"></span>
     <button class="btn btn-ghost btn-sm" onclick="exportarRegistros('${baseLog}','json')" title="Histórico de alterações (JSON)">${ic("download")} ${escapeHtml(cl.rotulo)}</button>
     ${podeImp ? `<button class="btn btn-ghost btn-sm" onclick="abrirImportarRegistros('${baseLog}')" title="Sobe o ${escapeHtml(cl.arquivoLegado)} do sistema antigo ou o exportado daqui">${ic("upload")} Importar log</button>` : ""}
+  </div>`;
+}
+/* Barra só com Exportar/Importar (bases sem log): listas, justificativas, indisponibilidades */
+function registrosIoBarraSimplesHtml(base){
+  if(!registrosIoLiberado()) return "";
+  const c = REGISTROS_IO[base];
+  const mod = c.escrever || c.modulo;
+  const podeImp = minhaPermissao(mod,"importar") && minhaPermissao(mod,"editar");
+  return `<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+    <button class="btn btn-export btn-sm" onclick="exportarRegistros('${base}','xlsx')">${ic("download")} Exportar Excel</button>
+    <button class="btn btn-export btn-sm" onclick="exportarRegistros('${base}','json')">${ic("download")} Exportar JSON</button>
+    ${podeImp ? `<button class="btn btn-import btn-sm" onclick="abrirImportarRegistros('${base}')" title="O ${escapeHtml(c.arquivoLegado)} do sistema antigo, ou o JSON/Excel exportados daqui">${ic("upload")} Importar</button>` : ""}
   </div>`;
 }
 function programacoesGestaoHtml(){
@@ -10900,15 +10919,15 @@ function cadastroGridHtmlCore(){
   }
   if(cfg.especial === "rankgestao") return rankGestaoHtml();
   if(cfg.especial === "metas") return metasGestaoHtml();
-  if(cfg.especial === "justificativas") return justificativasPaginaHtml();
-  if(cfg.especial === "indisp") return indispPaginaHtml();
+  if(cfg.especial === "justificativas") return registrosIoBarraSimplesHtml("justificativas") + justificativasPaginaHtml();
+  if(cfg.especial === "indisp") return registrosIoBarraSimplesHtml("indisponibilidades") + indispPaginaHtml();
   if(cfg.especial === "ajuste") return registrosIoBarraHtml("ajustes","ajustes_log") + ajusteOsCardHtml();
   if(cfg.especial === "registros") return programacoesGestaoHtml();
   if(cfg.especial === "historicoGest") return histGestHtml();
   if(cfg.especial === "auditoria") return auditoriaPaginaHtml();
   if(cfg.especial === "ativos") return ativosGestaoHtml();
   if(cfg.especial === "equip") return equipGestaoHtml();
-  if(cfg.especial === "lista") return listaGestaoHtml(cfg);
+  if(cfg.especial === "lista") return registrosIoBarraSimplesHtml("listas") + listaGestaoHtml(cfg);
   if(cfg.especial === "ajuda") return ajudaGestaoHtml();
   if(cadastroCarregando){
     return barraIndeterminadaHtml(`Carregando ${cfg.label.toLowerCase()}…`);

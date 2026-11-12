@@ -66,6 +66,32 @@ class RegistrosTest extends TestCase
         $this->assertFalse(DB::table('programacoes')->where('id', $id)->exists());
     }
 
+    public function test_listas_justificativas_indisponibilidades(): void
+    {
+        $h = $this->usuario("a1", "Administrador");
+        $this->postJson("/api/registros/listas/importar", ["registros" => [["lista" => "plano", "nome" => "Plano 2026", "ativo" => "Sim"], ["nome" => "sem lista"]]], $h)
+            ->assertOk()->assertJson(["novos" => 1])->assertJsonCount(1, "erros");
+        $this->getJson("/api/listas", $h)->assertJsonFragment(["lista" => "plano", "nome" => "Plano 2026"]);
+
+        DB::table("justificativas")->insert(["id" => "j0", "data" => "2026-11-03", "equipe_id" => "EQ1", "excluido" => false]);
+        $r = $this->postJson("/api/registros/justificativas/importar", ["registros" => [
+            ["id" => "j1", "equipeId" => "EQ1", "data" => "2026-11-03", "tipo" => "Chuva"],          // ja tem j0 no dia
+            ["id" => "j2", "equipeId" => "EQ2", "data" => "2026-11-03", "texto" => ""],
+            ["id" => "j3", "equipeId" => "EQ2", "data" => "2026-11-03"],                             // repetida no arquivo
+            ["id" => "j4", "equipeId" => "EQ2", "data" => "2026-11-03", "excluido" => true],         // excluida nao conta
+        ]], $h)->assertOk()->json();
+        $this->assertSame(2, $r["novos"]);
+        $this->assertCount(2, $r["erros"]);
+        $this->assertSame(["j0", "j2", "j4"], DB::table("justificativas")->orderBy("id")->pluck("id")->all());
+
+        $this->postJson("/api/registros/indisponibilidades/importar", ["registros" => [["equipeId" => "EQ1", "dataInicio" => "2026-11-05", "dataFim" => "2026-11-04"],
+            ["equipeId" => "EQ1", "dataInicio" => "2026-11-05", "dataFim" => "2026-11-06", "tipo" => "Férias"]]], $h)->assertOk()->assertJson(["novos" => 1])->assertJsonCount(1, "erros");
+
+        $ver = $this->usuario("u1", "Consulta", ["produtividade.visualizar", "produtividade.importar", "produtividade.editar"]);
+        $this->getJson("/api/registros/justificativas/exportar", $ver)->assertOk()->assertJsonCount(3);
+        $this->postJson("/api/registros/justificativas/importar", ["registros" => [["equipeId" => "X", "data" => "2026-01-01"]]], $ver)->assertStatus(403);   // precisa de gestaoBases
+    }
+
     public function test_ajustes_e_permissoes(): void
     {
         $h = $this->usuario('a1', 'Administrador');

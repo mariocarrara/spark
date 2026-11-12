@@ -25,6 +25,9 @@ class RegistrosController extends Controller
         'programacao_log' => ['modulo' => 'programacao', 'rotulo' => 'Log das programações'],
         'ajustes' => ['modulo' => 'manutencao', 'rotulo' => 'Ajustes de OS'],
         'ajustes_log' => ['modulo' => 'manutencao', 'rotulo' => 'Log dos ajustes de OS'],
+        'listas' => ['modulo' => 'manutencao', 'rotulo' => 'Listas (planos, equipe necessária, tipos de justificativa)'],
+        'justificativas' => ['modulo' => 'produtividade', 'escrever' => 'gestaoBases', 'rotulo' => 'Justificativas'],
+        'indisponibilidades' => ['modulo' => 'produtividade', 'escrever' => 'gestaoBases', 'rotulo' => 'Indisponibilidades'],
     ];
 
     private const MAX = 50000;
@@ -46,6 +49,14 @@ class RegistrosController extends Controller
                 't' => $iso($l->momento), 'u' => $l->usuario_id, 'p' => $l->programacao_id, 'a' => $l->acao, 'r' => (string) $l->resumo, 'ref' => (string) $l->ref,
                 'm' => json_decode($l->mudancas ?? '[]'), 'add' => json_decode($l->os_add ?? '[]'), 'rem' => json_decode($l->os_rem ?? '[]')])->all(),
             'ajustes' => DB::table('ajustes_os')->orderBy('os_id')->get()->map(fn ($a) => AjusteController::paraFront($a))->all(),
+            'listas' => DB::table('listas_cadastro')->orderBy('lista')->orderBy('ordem')->orderBy('nome')->get()->map(fn ($l) => ['id' => $l->id, 'lista' => $l->lista,
+                'nome' => $l->nome, 'ordem' => (int) $l->ordem, 'ativo' => (bool) $l->ativo, 'excluido' => (bool) $l->excluido])->all(),
+            'justificativas' => DB::table('justificativas')->orderBy('data')->orderBy('equipe_id')->get()->map(fn ($j) => ['id' => $j->id, 'data' => substr((string) $j->data, 0, 10),
+                'equipeId' => $j->equipe_id, 'tipo' => $j->tipo, 'texto' => $j->texto, 'autorId' => $j->autor_id, 'criadoEm' => $iso($j->criado_em),
+                'excluido' => (bool) $j->excluido, 'excluidoPor' => $j->excluido_por, 'excluidoEm' => $iso($j->excluido_em)])->all(),
+            'indisponibilidades' => DB::table('indisponibilidades')->orderBy('data_inicio')->orderBy('equipe_id')->get()->map(fn ($j) => ['id' => $j->id, 'equipeId' => $j->equipe_id,
+                'dataInicio' => substr((string) $j->data_inicio, 0, 10), 'dataFim' => substr((string) $j->data_fim, 0, 10), 'tipo' => $j->tipo, 'texto' => $j->texto,
+                'autorId' => $j->autor_id, 'criadoEm' => $iso($j->criado_em), 'excluido' => (bool) $j->excluido, 'excluidoPor' => $j->excluido_por, 'excluidoEm' => $iso($j->excluido_em)])->all(),
             'ajustes_log' => DB::table('ajustes_os_log')->orderBy('momento')->orderBy('id')->get()->map(fn ($l) => [
                 't' => $iso($l->momento), 'u' => $l->usuario_id, 'os' => $l->os_id, 'a' => $l->acao, 'de' => json_decode($l->de ?? 'null'), 'para' => json_decode($l->para ?? 'null')])->all(),
         };
@@ -59,7 +70,8 @@ class RegistrosController extends Controller
             return response()->json(['erro' => "Base desconhecida: {$base}"], 400);
         }
         $eu = $r->user();
-        if (! ($eu->pode($cfg['modulo'], 'importar') && $eu->pode($cfg['modulo'], 'editar'))) {
+        $mod = $cfg['escrever'] ?? $cfg['modulo'];
+        if (! ($eu->pode($mod, 'importar') && $eu->pode($mod, 'editar'))) {
             return response()->json(['erro' => "Sem permissão para importar {$cfg['rotulo']} (precisa poder importar e editar)."], 403);
         }
         // corpo cru: o Laravel troca "" por null em toda a entrada, e aqui o conteudo (copias de OS, logs) tem que chegar intacto
@@ -253,6 +265,123 @@ class RegistrosController extends Controller
         }
 
         return ['novos' => count($linhas), 'atualizados' => 0, 'removidos' => $removidos, 'erros' => $erros];
+    }
+
+
+    // ------------------------------------------------------------------ Listas, Justificativas e Indisponibilidades (formato completo do legado, com a marca de excluido)
+
+    private function importarListas(array $regs, string $modo, $eu): array
+    {
+        $erros = [];
+        $boas = [];
+        foreach ($regs as $i => $l) {
+            $lista = is_array($l) ? trim((string) ($l['lista'] ?? '')) : '';
+            $nome = is_array($l) ? trim((string) ($l['nome'] ?? '')) : '';
+            if ($lista === '' || $nome === '') {
+                $erros[] = ['linha' => $i + 1, 'erro' => 'Falta a lista (plano, equipeNecessaria, justificativaTipo...) ou o nome.'];
+
+                continue;
+            }
+            $id = trim((string) ($l['id'] ?? '')) ?: 'l-'.substr(md5(mb_strtolower($lista.'|'.$nome)), 0, 16);
+            $boas[$id] = ['id' => mb_substr($id, 0, 80), 'lista' => mb_substr($lista, 0, 60), 'nome' => mb_substr($nome, 0, 200), 'ordem' => (int) ($l['ordem'] ?? 0),
+                'ativo' => self::bool($l['ativo'] ?? true, true), 'excluido' => self::bool($l['excluido'] ?? false, false)];
+        }
+
+        return $this->gravarSimples('listas_cadastro', 'id', $boas, $modo, $erros);
+    }
+
+    private function importarJustificativas(array $regs, string $modo, $eu): array
+    {
+        $erros = [];
+        $boas = [];
+        $dia = [];
+        foreach ($regs as $i => $j) {
+            $eq = is_array($j) ? trim((string) ($j['equipeId'] ?? '')) : '';
+            $data = is_array($j) ? P::dataValida($j['data'] ?? '') : null;
+            if ($eq === '' || ! $data) {
+                $erros[] = ['linha' => $i + 1, 'erro' => 'Falta a equipe ou a data (AAAA-MM-DD).'];
+
+                continue;
+            }
+            $id = trim((string) ($j['id'] ?? '')) ?: (string) Str::uuid();
+            $exc = self::bool($j['excluido'] ?? false, false);
+            $k = $eq.'|'.$data;
+            if (! $exc && isset($dia[$k]) && $dia[$k] !== $id) {
+                $erros[] = ['linha' => $i + 1, 'chave' => $id, 'erro' => "A equipe {$eq} já tem justificativa em {$data} neste arquivo (1 por dia)."];
+
+                continue;
+            }
+            if (! $exc) {
+                $dia[$k] = $id;
+            }
+            $boas[$id] = ['id' => mb_substr($id, 0, 80), 'data' => $data, 'equipe_id' => mb_substr($eq, 0, 60), 'tipo' => self::txt($j['tipo'] ?? null),
+                'texto' => self::txt($j['texto'] ?? null), 'autor_id' => self::txt($j['autorId'] ?? null) ?? $eu->id, 'criado_em' => self::momento($j['criadoEm'] ?? null) ?? now(),
+                'excluido' => $exc, 'excluido_por' => self::txt($j['excluidoPor'] ?? null), 'excluido_em' => self::momento($j['excluidoEm'] ?? null)];
+        }
+        // 1 por equipe por dia tambem contra o que continua no banco (no substituir, o que nao veio sai)
+        if ($modo !== 'substituir') {
+            $ocupado = [];
+            foreach (DB::table('justificativas')->where('excluido', false)->whereNotIn('id', array_keys($boas))->get(['equipe_id', 'data']) as $x) {
+                $ocupado[$x->equipe_id.'|'.substr((string) $x->data, 0, 10)] = true;
+            }
+            foreach ($boas as $id => $b) {
+                if (! $b['excluido'] && isset($ocupado[$b['equipe_id'].'|'.$b['data']])) {
+                    $erros[] = ['linha' => 0, 'chave' => $id, 'erro' => "A equipe {$b['equipe_id']} já tem outra justificativa em {$b['data']} no sistema."];
+                    unset($boas[$id]);
+                }
+            }
+        }
+
+        return $this->gravarSimples('justificativas', 'id', $boas, $modo, $erros);
+    }
+
+    private function importarIndisponibilidades(array $regs, string $modo, $eu): array
+    {
+        $erros = [];
+        $boas = [];
+        foreach ($regs as $i => $j) {
+            $eq = is_array($j) ? trim((string) ($j['equipeId'] ?? '')) : '';
+            $ini = is_array($j) ? P::dataValida($j['dataInicio'] ?? '') : null;
+            $fim = is_array($j) ? P::dataValida($j['dataFim'] ?? ($j['dataInicio'] ?? '')) : null;
+            if ($eq === '' || ! $ini || ! $fim || $fim < $ini) {
+                $erros[] = ['linha' => $i + 1, 'erro' => 'Falta a equipe ou as datas (AAAA-MM-DD, fim depois do início).'];
+
+                continue;
+            }
+            $id = trim((string) ($j['id'] ?? '')) ?: (string) Str::uuid();
+            $boas[$id] = ['id' => mb_substr($id, 0, 80), 'equipe_id' => mb_substr($eq, 0, 60), 'data_inicio' => $ini, 'data_fim' => $fim, 'tipo' => self::txt($j['tipo'] ?? null),
+                'texto' => self::txt($j['texto'] ?? null), 'autor_id' => self::txt($j['autorId'] ?? null) ?? $eu->id, 'criado_em' => self::momento($j['criadoEm'] ?? null) ?? now(),
+                'excluido' => self::bool($j['excluido'] ?? false, false), 'excluido_por' => self::txt($j['excluidoPor'] ?? null), 'excluido_em' => self::momento($j['excluidoEm'] ?? null)];
+        }
+
+        return $this->gravarSimples('indisponibilidades', 'id', $boas, $modo, $erros);
+    }
+
+    /** upsert pela chave; substituir apaga o que nao veio. */
+    private function gravarSimples(string $tabela, string $chave, array $boas, string $modo, array $erros): array
+    {
+        $existentes = DB::table($tabela)->pluck($chave)->flip();
+        $removidos = $modo === 'substituir' ? DB::table($tabela)->whereNotIn($chave, array_keys($boas))->delete() : 0;
+        $atualizados = count(array_filter(array_keys($boas), fn ($k) => isset($existentes[$k])));
+        $cols = $boas ? array_values(array_diff(array_keys(reset($boas)), [$chave])) : [];
+        foreach (array_chunk(array_values($boas), 500) as $lote) {
+            DB::table($tabela)->upsert($lote, [$chave], $cols);
+        }
+
+        return ['novos' => count($boas) - $atualizados, 'atualizados' => $atualizados, 'removidos' => $removidos, 'erros' => $erros];
+    }
+
+    private static function bool($v, bool $padrao): bool
+    {
+        if (is_bool($v)) {
+            return $v;
+        }
+        $t = mb_strtolower(trim((string) $v));
+        if ($t === '') {
+            return $padrao;
+        }
+
+        return in_array($t, ['sim', 's', 'x', 'true', '1', 'verdadeiro', 'yes'], true);
     }
 
     // ------------------------------------------------------------------ apoio
