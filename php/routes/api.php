@@ -19,6 +19,7 @@ use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\PendenteController;
 use App\Http\Controllers\Api\PermissaoController;
 use App\Http\Controllers\Api\ProgramacaoController;
+use App\Http\Controllers\Api\RegistrosController;
 use App\Http\Controllers\Api\UsuarioController;
 use Illuminate\Support\Facades\Route;
 
@@ -121,6 +122,10 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/justificativas', [JustificativaController::class, 'index']);
     Route::post('/justificativas', [JustificativaController::class, 'store']);
     Route::delete('/justificativas/{id}', [JustificativaController::class, 'destroy']);
+
+    // Gestao de Bases: exportar/importar Programacoes, Ajustes de OS e os logs deles
+    Route::get('/registros/{base}/exportar', [RegistrosController::class, 'exportar']);
+    Route::post('/registros/{base}/importar', [RegistrosController::class, 'importar']);
 
     // Programacao
     Route::get('/programacao', [ProgramacaoController::class, 'index']);

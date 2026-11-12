@@ -115,7 +115,9 @@ class CamadasRedeController extends Controller
         if ($alim === '' || mb_strlen($alim) > 120) {
             return response()->json(['erro' => 'Informe o alimentador (nome do arquivo).'], 400);
         }
-        $features = $r->input('features');
+        // corpo cru: o Laravel troca "" por null em toda a entrada, e os atributos da BDGD tem que chegar intactos
+        $corpo = json_decode($r->getContent(), true);
+        $features = is_array($corpo) ? ($corpo['features'] ?? null) : null;
         if (! is_array($features)) {
             return response()->json(['erro' => 'O arquivo não tem "features" (não é um GeoJSON).'], 400);
         }

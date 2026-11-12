@@ -9980,6 +9980,140 @@ async function executarImportarCamada(){
     if(btn) btn.disabled = false;
   }
 }
+/* ---------------- v3.17.1 - Exportar / Importar Programações e Ajustes de OS (com os logs) ----------------
+   O que antes só entrava pelo "Importar sistema antigo". Aceita os arquivos do sistema antigo
+   (programacao.json, programacao_log.jsonl, ajustes_os.json, ajustes_os_log.jsonl) ou o exportado daqui.
+   Excel: uma linha por programação/ajuste (equipes e OS separadas por "; "); as cópias das OS e os logs só em JSON. */
+const REGISTROS_IO = {
+  programacoes: { rotulo:"Programações", modulo:"programacao", arquivoLegado:"programacao.json", bool:["previstoConcluir"],
+    campos:[["id","ID"],["status","Status"],["tipoProgramacao","Tipo"],["dataInicio","Data início"],["dataFim","Data fim"],["protecaoId","Proteção"],["alimentador","Alimentador"],
+      ["localidade","Localidade"],["polo","Polo"],["regional","Regional"],["plano","Plano"],["tipoPlano","Tipo de plano"],["equipeNecessaria","Equipe necessária"],
+      ["desligamento","Desligamento"],["numeroSIS","Número SIS"],["observacao","Observação"],["previstoConcluir","Previsto concluir"],["equipesIds","Equipes"],
+      ["osIds","OS"],["programadorId","Programador"],["origemTela","Origem"],["criadoEm","Criado em"],["atualizadoEm","Atualizado em"]] },
+  programacao_log: { rotulo:"Log das programações", modulo:"programacao", arquivoLegado:"programacao_log.jsonl", soJson:true },
+  ajustes: { rotulo:"Ajustes de OS", modulo:"manutencao", arquivoLegado:"ajustes_os.json",
+    campos:[["id","OS"],["tipoEquipe","Tipo de equipe"],["equipeId","Equipe"],["alimentador","Alimentador"],["protecaoId","Proteção"],
+      ["criadoPor","Criado por"],["criadoEm","Criado em"],["atualizadoPor","Atualizado por"],["atualizadoEm","Atualizado em"]] },
+  ajustes_log: { rotulo:"Log dos ajustes", modulo:"manutencao", arquivoLegado:"ajustes_os_log.jsonl", soJson:true },
+};
+function registrosIoLiberado(){ return API_ONLINE && typeof API_BACKEND!=="undefined" && API_BACKEND==="laravel"; }
+/* Barra com Exportar/Importar de uma base principal + o log dela */
+function registrosIoBarraHtml(base, baseLog){
+  if(!registrosIoLiberado()) return "";
+  const c = REGISTROS_IO[base], cl = REGISTROS_IO[baseLog];
+  const podeImp = minhaPermissao(c.modulo,"importar") && minhaPermissao(c.modulo,"editar");
+  return `<div style="display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+    <button class="btn btn-export btn-sm" onclick="exportarRegistros('${base}','xlsx')">${ic("download")} Exportar Excel</button>
+    <button class="btn btn-export btn-sm" onclick="exportarRegistros('${base}','json')">${ic("download")} Exportar JSON</button>
+    ${podeImp ? `<button class="btn btn-import btn-sm" onclick="abrirImportarRegistros('${base}')">${ic("upload")} Importar</button>` : ""}
+    <span style="width:1px; height:22px; background:var(--border-hi); margin:0 2px;"></span>
+    <button class="btn btn-ghost btn-sm" onclick="exportarRegistros('${baseLog}','json')" title="Histórico de alterações (JSON)">${ic("download")} ${escapeHtml(cl.rotulo)}</button>
+    ${podeImp ? `<button class="btn btn-ghost btn-sm" onclick="abrirImportarRegistros('${baseLog}')" title="Sobe o ${escapeHtml(cl.arquivoLegado)} do sistema antigo ou o exportado daqui">${ic("upload")} Importar log</button>` : ""}
+  </div>`;
+}
+function programacoesGestaoHtml(){
+  const n = (state.programacoes||[]).length;
+  return registrosIoBarraHtml("programacoes","programacao_log") + `
+    <div class="note">${ic("info")}<div><b>${n.toLocaleString("pt-BR")}</b> programação(ões) no sistema.
+      Para trazer do sistema antigo: <b>Importar</b> com o <code>programacao.json</code> e depois <b>Importar log</b> com o <code>programacao_log.jsonl</code> (da pasta model).
+      O Excel serve para conferir ou ajustar em massa (equipes e OS separadas por "; "); as cópias das OS na hora da programação só vão no JSON.</div></div>`;
+}
+async function exportarRegistros(base, formato){
+  const c = REGISTROS_IO[base];
+  toast(`Preparando ${c.rotulo}…`);
+  try{
+    const lista = await apiGet(`/registros/${base}/exportar`, 300000);
+    const nome = `SPARK_${base}_${new Date().toISOString().slice(0,10)}`;
+    if(formato==="json"){
+      cadastroBaixar(new Blob([JSON.stringify(lista)], { type:"application/json" }), nome + ".json");
+    } else {
+      if(typeof XLSX==="undefined"){ toast("Biblioteca de planilha (XLSX) não carregada."); return; }
+      const linhas = lista.map(r=>{ const o = {}; c.campos.forEach(([k,rot])=>{ let v = r[k]; if(Array.isArray(v)) v = v.join("; "); if(typeof v==="boolean") v = v ? "Sim" : "Não"; o[rot] = v==null ? null : v; }); return o; });
+      const ws = XLSX.utils.json_to_sheet(linhas, { header: c.campos.map(x=>x[1]) });
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, c.rotulo.slice(0,31));
+      XLSX.writeFile(wb, nome + ".xlsx");
+    }
+    toast(`${lista.length.toLocaleString("pt-BR")} registro(s) exportado(s).`);
+  }catch(err){ toast(`Erro ao exportar: ${err.message}`); }
+}
+let registrosImport = null;
+function abrirImportarRegistros(base){
+  const c = REGISTROS_IO[base];
+  registrosImport = null;
+  openModal(`
+    <h2>Importar — ${escapeHtml(c.rotulo)}</h2>
+    <p class="modal-sub">${c.soJson ? `O <code>${escapeHtml(c.arquivoLegado)}</code> do sistema antigo ou o JSON exportado daqui.` : `O <code>${escapeHtml(c.arquivoLegado)}</code> do sistema antigo, o JSON ou o Excel exportados daqui.`}
+      Linhas com problema não travam o arquivo: voltam numa lista e o resto é gravado.</p>
+    <div class="field" style="margin-bottom:12px;"><label>Arquivo</label>
+      <input type="file" accept="${c.soJson ? ".json,.jsonl" : ".json,.jsonl,.xlsx,.xls"}" onchange="lerArquivoRegistros('${base}', this.files[0])"></div>
+    <div class="field" style="margin-bottom:6px;"><label>Como gravar</label>
+      ${c.soJson
+        ? `<label class="check-row" style="margin:0 0 4px;"><input type="radio" name="regImpModo" value="atualizar" checked> <span><b>Atualizar</b> — o histórico de quem está no arquivo é trocado pelo do arquivo; o dos outros fica.</span></label>
+           <label class="check-row" style="margin:0;"><input type="radio" name="regImpModo" value="substituir"> <span><b>Substituir</b> — o histórico inteiro fica igual ao arquivo.</span></label>`
+        : `<label class="check-row" style="margin:0 0 4px;"><input type="radio" name="regImpModo" value="atualizar" checked> <span><b>Atualizar e acrescentar</b> — quem já existe (mesmo ID) é atualizado; quem é novo entra; o resto fica.</span></label>
+           <label class="check-row" style="margin:0;"><input type="radio" name="regImpModo" value="substituir"> <span><b>Substituir</b> — fica só o que está no arquivo.</span></label>`}
+    </div>
+    <div id="regImpResumo" style="margin-top:10px;"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Fechar</button>
+      <button class="btn btn-primary" id="regImpBtn" disabled onclick="executarImportarRegistros('${base}')">${ic("check")} Importar</button>
+    </div>`);
+}
+async function lerArquivoRegistros(base, arquivo){
+  const c = REGISTROS_IO[base];
+  const resumo = document.getElementById("regImpResumo"), btn = document.getElementById("regImpBtn");
+  registrosImport = null; if(btn) btn.disabled = true;
+  if(!arquivo) return;
+  try{
+    let regs;
+    if(/\.jsonl?$/i.test(arquivo.name)){
+      let t = await arquivo.text(); if(t.charCodeAt(0)===0xFEFF) t = t.slice(1);
+      const tt = t.trim();
+      if(tt.startsWith("[")) regs = JSON.parse(tt);
+      else if(/\.jsonl$/i.test(arquivo.name) || tt.startsWith("{")) regs = tt.split(/\r?\n/).filter(l=>l.trim()).map((l,i)=>{ try{ return JSON.parse(l); }catch(e){ return null; } });
+      else throw new Error("o arquivo não é uma lista JSON nem JSONL");
+    } else {
+      if(c.soJson) throw new Error("o log só entra em JSON/JSONL");
+      if(typeof XLSX==="undefined") throw new Error("biblioteca de planilha (XLSX) não carregada");
+      const wb = XLSX.read(await arquivo.arrayBuffer(), { type:"array", cellDates:true });
+      const brutos = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:null, raw:true });
+      const mapa = {}; c.campos.forEach(([k,r])=>{ mapa[normCabecalho(k)] = k; mapa[normCabecalho(r)] = k; });
+      const dia = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      regs = brutos.map(b=>{ const o = {}; Object.keys(b).forEach(h=>{ const k = mapa[normCabecalho(h)]; if(!k) return; let v = b[h];
+        if(v instanceof Date) v = /Em$/.test(k) ? v.toISOString() : dia(v);
+        if((c.bool||[]).includes(k) && typeof v==="string") v = /^(sim|s|x|true|1)$/i.test(v.trim());
+        o[k] = v; }); return o; });
+    }
+    if(!Array.isArray(regs) || !regs.length) throw new Error("nenhum registro no arquivo");
+    registrosImport = { arquivo: arquivo.name, regs };
+    resumo.innerHTML = `<div class="note">${ic("info")}<div><b>${regs.length.toLocaleString("pt-BR")}</b> registro(s) lido(s) de ${escapeHtml(arquivo.name)}.</div></div>`;
+    if(btn) btn.disabled = false;
+  }catch(err){ resumo.innerHTML = `<div class="login-error">${ic("info")}<div>Não consegui ler o arquivo: ${escapeHtml(err.message)}</div></div>`; }
+}
+async function executarImportarRegistros(base){
+  if(!registrosImport) return;
+  const c = REGISTROS_IO[base];
+  const modo = (document.querySelector('input[name="regImpModo"]:checked')||{}).value || "atualizar";
+  if(modo==="substituir" && !window.confirm(`Substituir: o que não estiver no arquivo sai de ${c.rotulo}. Continuar?`)) return;
+  const resumo = document.getElementById("regImpResumo"), btn = document.getElementById("regImpBtn"); if(btn) btn.disabled = true;
+  resumo.innerHTML = barraIndeterminadaHtml("Gravando…");
+  try{
+    const r = await apiPost(`/registros/${base}/importar`, { modo, arquivo: registrosImport.arquivo, registros: registrosImport.regs }, 900000);
+    const n = v => Number(v||0).toLocaleString("pt-BR");
+    const erros = r.erros || [];
+    resumo.innerHTML = `<div class="note" style="background:var(--ok-bg); color:var(--ok-fg);">${ic("check")}<div>
+        Importado: <b>${n(r.novos)}</b> novo(s), <b>${n(r.atualizados)}</b> atualizado(s)${r.removidos ? `, <b>${n(r.removidos)}</b> removido(s)/trocado(s)` : ""}.
+        ${erros.length ? `<br><b>${n(erros.length)}</b> linha(s) não entraram (lista abaixo).` : ""}</div></div>
+      ${erros.length ? `<div class="table-wrap" style="max-height:30vh; overflow:auto; margin-top:8px;"><table><thead><tr><th>Linha</th><th>ID</th><th>Problema</th></tr></thead><tbody>
+        ${erros.slice(0,300).map(e=>`<tr><td class="num">${e.linha + (/\.xlsx?$/i.test(registrosImport.arquivo) ? 1 : 0)}</td><td>${escapeHtml(e.chave||"")}</td><td>${escapeHtml(e.erro)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+    try{ await loadStateFromApi(); }catch(e){}
+    const w = document.getElementById("cadastroGridWrap"); if(w) w.innerHTML = cadastroGridHtml();
+  }catch(err){
+    let t = err.message; const m = t.match(/\(([^)]+)\)\s*$/); if(m) t = m[1];
+    resumo.innerHTML = `<div class="login-error">${ic("info")}<div>A importação não foi gravada: ${escapeHtml(t)}</div></div>`;
+    if(btn) btn.disabled = false;
+  }
+}
 function alimentadorRowHtml(camada, item){
   const idLinha = `${camada}|${item.chave}`;
   const trechosTexto = typeof item.trechos==="number" ? `${item.trechos.toLocaleString("pt-BR")} trecho(s)` : "—";
@@ -10496,6 +10630,8 @@ const CADASTROS_BASES = {
   // v3.1.1 - perguntas e respostas do chat de Ajuda (canto da tela)
   ajuda: { label: "Ajuda", especial: "ajuda" },
   indisponibilidade: { label: "Indisponibilidade de equipes", especial: "indisp" },
+  // v3.17.1 - exportar/importar as programações (antes só pelo "Importar sistema antigo")
+  programacoesBase: { label: "Programações", especial: "registros", soLaravel: true },
   // v3.5.0 - correção manual e soberana de OS levantada errada
   ajusteOs: { label: "Ajuste de OS", especial: "ajuste" },
   auditoria: { label: "Auditoria de podas", especial: "auditoria" },
@@ -10676,7 +10812,8 @@ function cadastroGridHtmlCore(){
   if(cfg.especial === "metas") return metasGestaoHtml();
   if(cfg.especial === "justificativas") return justificativasPaginaHtml();
   if(cfg.especial === "indisp") return indispPaginaHtml();
-  if(cfg.especial === "ajuste") return ajusteOsCardHtml();
+  if(cfg.especial === "ajuste") return registrosIoBarraHtml("ajustes","ajustes_log") + ajusteOsCardHtml();
+  if(cfg.especial === "registros") return programacoesGestaoHtml();
   if(cfg.especial === "auditoria") return auditoriaPaginaHtml();
   if(cfg.especial === "ativos") return ativosGestaoHtml();
   if(cfg.especial === "equip") return equipGestaoHtml();
@@ -10758,7 +10895,7 @@ async function carregarCadastroPagina(){
     const w = document.getElementById("cadastroGridWrap"); if(w) w.innerHTML = cadastroGridHtml();
     return;
   }
-  if(cfg.especial === "metas" || cfg.especial === "lista" || cfg.especial === "justificativas" || cfg.especial === "indisp" || cfg.especial === "auditoria" || cfg.especial === "ajuste" || cfg.especial === "rankgestao"){
+  if(cfg.especial === "metas" || cfg.especial === "lista" || cfg.especial === "justificativas" || cfg.especial === "indisp" || cfg.especial === "auditoria" || cfg.especial === "ajuste" || cfg.especial === "registros" || cfg.especial === "rankgestao"){
     if(cfg.especial === "rankgestao"){ try{ await rankCarregarListas(true); }catch(e){ state.rankListas = state.rankListas || []; } }
     if(cfg.especial === "lista" && API_ONLINE){
       try{ const l = await apiGet("/listas"); if(l) state.listas = l; }catch(e){ /* mantém o que já está carregado */ }
@@ -10832,7 +10969,7 @@ function podeEditarLinhaBase(){
 }
 function podeEscreverBase(chaveBase){
   const cfg = CADASTROS_BASES[chaveBase || cadastroBaseAtiva];
-  if(!cfg || cfg.especial==="resetar" || cfg.especial==="justificativas" || cfg.especial==="indisp" || cfg.especial==="auditoria" || cfg.especial==="ajuste" || cfg.especial==="rankgestao") return false;
+  if(!cfg || cfg.especial==="resetar" || cfg.especial==="registros" || cfg.especial==="justificativas" || cfg.especial==="indisp" || cfg.especial==="auditoria" || cfg.especial==="ajuste" || cfg.especial==="rankgestao") return false;
   if(!API_ONLINE) return false;
   const mod = (cfg.especial==="metas") ? "metas" : "manutencao";
   return minhaPermissao(mod,"importar") && minhaPermissao(mod,"editar");

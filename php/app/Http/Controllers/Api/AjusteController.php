@@ -97,7 +97,7 @@ class AjusteController extends Controller
         return $h;
     }
 
-    private static function paraFront(object $a): array
+    public static function paraFront(object $a): array
     {
         $iso = fn ($v) => $v ? Carbon::parse($v)->setTimezone(config('app.timezone'))->toIso8601String() : null;
 
