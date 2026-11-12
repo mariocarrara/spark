@@ -3,7 +3,7 @@
 Responda ao Mario em portugues. Ele e gestor no Grupo Energisa, entende PHP/seguranca, nao e dev em tempo integral: explique curto, entregue pronto.
 
 ## O que e
-Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alertas, Pontos Nix, APP/RL, historico por plano. Versao atual do legado: **v3.16.7**.
+Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alertas, Pontos Nix, APP/RL, historico por plano. Versao atual do legado: **v3.16.8**.
 
 ## Estado
 - `legado-powershell/`: PowerShell 5.1 (HttpListener) com `controller/server.ps1`, `routes/*.ps1`, `lib/*.ps1`; dados em JSON em `model/` (`Read-JsonModel`/`Write-JsonModel`); front vanilla JS em `view/js` (app.js gigante). PowerShell NUNCA foi executado no ambiente do Claude: so revisado. Arquivos com BOM + LF.

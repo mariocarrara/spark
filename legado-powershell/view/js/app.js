@@ -10865,7 +10865,7 @@ function cadastroAcoesHtml(){
 const CADASTRO_IO_BASES = ["equipes","vao","protecao","vera","esquemas","municipios","conjuntos","ew","metas"];
 const CADASTRO_IO_PEDACO = 5000;
 const METAS_IO_CAMPOS = [["id","ID"],["equipeId","Equipe"],["tipo","Tipo"],["anoMes","Mês (AAAA-MM)"],["metaMensal","Meta mensal"],["diasUteis","Dias úteis"],["metaDiaria","Meta diária"],["origem","Origem"],["atualizadoPor","Atualizado por"],["atualizadoEm","Atualizado em"]];
-/* Botão "Exportar" com setinha: o formato escolhido (Excel/JSON) fica lembrado neste navegador */
+/* Botão "Exportar" com setinha: a setinha só escolhe o formato (Excel/JSON, lembrado neste navegador); o texto baixa */
 let cadastroExportFormato = (()=>{ try{ return localStorage.getItem("spark.exportFormato")==="json" ? "json" : "xlsx"; }catch(e){ return "xlsx"; } })();
 function exportarSplitHtml(){
   const rot = cadastroExportFormato==="json" ? "JSON" : "Excel";
@@ -10888,8 +10888,7 @@ function escolherFormatoExport(f){
   cadastroExportFormato = f;
   try{ localStorage.setItem("spark.exportFormato", f); }catch(e){}
   const el = document.getElementById("exportSplit");
-  if(el) el.outerHTML = exportarSplitHtml();
-  exportarBaseCadastro(f);
+  if(el) el.outerHTML = exportarSplitHtml();   // só troca o formato; quem baixa é o texto do botão
 }
 function cadastroIoAtivo(){ return API_ONLINE && typeof API_BACKEND!=="undefined" && API_BACKEND==="laravel" && CADASTRO_IO_BASES.includes(cadastroBaseAtiva); }
 function cadastroApiBaseAtiva(){ const cfg = CADASTROS_BASES[cadastroBaseAtiva]; return cfg.apiBase || cadastroBaseAtiva; }
