@@ -36,7 +36,7 @@ class AuthApiTest extends TestCase
 
     public function test_health_e_publico(): void
     {
-        $this->getJson('/api/health')->assertOk()->assertJson(['status' => 'ok', 'usuario' => 'Anônimo']);
+        $this->getJson('/api/health')->assertOk()->assertJson(['status' => 'ok', 'usuario' => 'Anônimo', 'backend' => 'laravel']);
     }
 
     public function test_login_ok_devolve_token_e_usuario_no_formato_do_legado(): void

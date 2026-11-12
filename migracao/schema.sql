@@ -423,26 +423,29 @@ CREATE TABLE equipamentos (                          -- trafos, protecoes, capac
 CREATE INDEX equipamentos_loc_gix ON equipamentos USING GIST (loc);
 CREATE INDEX equipamentos_poste_ix ON equipamentos (poste);
 
--- camadas vetoriais carregadas dos KMZ/Shapefile (pasta geo/)
-CREATE TABLE rede_trechos (
+-- camadas vetoriais (pasta geo/ do sistema antigo): Rede MT/BT/AT, Reserva Legal e APP.
+-- Uma linha por feicao (trecho ou poligono), com o tipo de geometria original (LineString, Polygon...)
+-- e os atributos da BDGD/shapefile intactos; "alimentador" = chave do arquivo no legado (CTMT).
+CREATE TABLE rede_feicoes (
   id          BIGSERIAL PRIMARY KEY,
-  camada      TEXT NOT NULL,                         -- mt | bt | at
-  alimentador TEXT,
-  atributos   JSONB,                                 -- atributos do DBF preservados
-  geom        geometry(MultiLineString,4326) NOT NULL
-);
-CREATE INDEX rede_trechos_gix ON rede_trechos USING GIST (geom);
-CREATE INDEX rede_trechos_alim_ix ON rede_trechos (camada, alimentador);
-
-CREATE TABLE areas_protegidas (                      -- APP e Reserva Legal
-  id          BIGSERIAL PRIMARY KEY,
-  tipo        TEXT NOT NULL,                         -- app | rl
-  alimentador TEXT,
+  camada      TEXT NOT NULL,                         -- mt | bt | at | rl | app
+  alimentador TEXT NOT NULL,
   atributos   JSONB,
-  geom        geometry(MultiPolygon,4326) NOT NULL
+  geom        geometry(Geometry,4326) NOT NULL
 );
-CREATE INDEX areas_protegidas_gix ON areas_protegidas USING GIST (geom);
-CREATE INDEX areas_protegidas_tipo_ix ON areas_protegidas (tipo, alimentador);
+CREATE INDEX rede_feicoes_gix ON rede_feicoes USING GIST (geom);
+CREATE INDEX rede_feicoes_alim_ix ON rede_feicoes (camada, alimentador, id);
+
+CREATE TABLE rede_alimentadores (                    -- o _index.json do legado, por camada
+  camada      TEXT NOT NULL,
+  alimentador TEXT NOT NULL,
+  nome        TEXT,
+  nomes       JSONB,                                 -- quando o CTMT tem mais de um nome
+  trechos     INT NOT NULL DEFAULT 0,
+  metros      NUMERIC,                               -- soma do COMP (so rede)
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (camada, alimentador)
+);
 
 -- ---------------------------------------------------------------------------
 -- 6. Prioridade (rank) e Pontos Nix

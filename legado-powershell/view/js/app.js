@@ -9867,6 +9867,119 @@ function renderGerenciarCamadas(){
       </div>`;
   }).join("");
 }
+
+/* ---------------- v3.17.0 - Exportar / Importar das camadas de rede (MT, BT, AT, Reserva Legal, APP) ----------------
+   Exportar: a camada inteira num GeoJSON só (cada feição leva _alimentador e _alimentadorNome).
+   Importar: os .geojson do sistema antigo (um por alimentador; nome do arquivo = alimentador; o _index.json,
+   se vier junto, dá o nome e os metros) OU o GeoJSON exportado aqui (agrupa por _alimentador).
+   Cada alimentador é gravado separado: um arquivo ruim volta na lista e não derruba os outros. */
+function camadaIoAtivo(){ const cfg = CADASTROS_BASES[cadastroBaseAtiva] || {}; return cfg.especial==="camadas" && API_ONLINE && typeof API_BACKEND!=="undefined" && API_BACKEND==="laravel"; }
+function camadaAcoesIoHtml(){
+  if(!camadaIoAtivo()) return "";
+  const podeImp = minhaPermissao("manutencao","importar") && minhaPermissao("manutencao","editar");
+  return `<button class="btn btn-export btn-sm" onclick="exportarCamadaRede()" title="Baixa a camada inteira em GeoJSON (abre no QGIS e volta aqui pelo Importar)">${ic("download")} Exportar GeoJSON</button>
+    ${podeImp ? `<button class="btn btn-import btn-sm" onclick="abrirImportarCamadaRede()" title="Sobe os .geojson (um por alimentador) ou o GeoJSON exportado daqui">${ic("upload")} Importar</button>` : ""}`;
+}
+async function exportarCamadaRede(){
+  const cfg = CADASTROS_BASES[cadastroBaseAtiva];
+  toast(`Preparando ${cfg.label} (pode passar de 100 MB)…`);
+  try{
+    const texto = await apiGetTexto(`/importacao/camadas/${cfg.camada}/exportar`, 900000);
+    cadastroBaixar(new Blob([texto], { type:"application/geo+json" }), `SPARK_${cfg.camada}_${new Date().toISOString().slice(0,10)}.geojson`);
+    toast(`${cfg.label} exportada.`);
+  }catch(err){ toast(`Erro ao exportar: ${err.message}`); }
+}
+let camadaImport = null;   // { arquivos:[File], indice:{} }
+function abrirImportarCamadaRede(){
+  const cfg = CADASTROS_BASES[cadastroBaseAtiva];
+  camadaImport = null;
+  openModal(`
+    <h2>Importar — ${escapeHtml(cfg.label)}</h2>
+    <p class="modal-sub">Escolha os <b>.geojson</b> (um por alimentador, como na pasta <code>geo/${escapeHtml(GEO_PASTA_DA_CAMADA[cfg.camada]||cfg.camada)}</code> do sistema antigo) ou a pasta inteira.
+      Também aceita o GeoJSON exportado daqui. O nome do arquivo é o alimentador; o <code>_index.json</code>, se vier junto, traz os nomes.</p>
+    <div class="field" style="margin-bottom:8px;"><label>Arquivos</label>
+      <input type="file" multiple accept=".geojson,.json" onchange="camadaEscolheu(this.files)"></div>
+    <div class="field" style="margin-bottom:12px;"><label>…ou a pasta</label>
+      <input type="file" webkitdirectory directory multiple onchange="camadaEscolheu(this.files)"></div>
+    <div class="field" style="margin-bottom:6px;"><label>Como gravar</label>
+      <label class="check-row" style="margin:0 0 4px;"><input type="radio" name="camImpModo" value="atualizar" checked> <span><b>Atualizar</b> — só os alimentadores dos arquivos são trocados; os outros ficam.</span></label>
+      <label class="check-row" style="margin:0;"><input type="radio" name="camImpModo" value="substituir"> <span><b>Substituir</b> — apaga a camada inteira antes e fica só o que veio.</span></label>
+    </div>
+    <div id="camImpResumo" style="margin-top:10px;"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Fechar</button>
+      <button class="btn btn-primary" id="camImpBtn" disabled onclick="executarImportarCamada()">${ic("check")} Importar</button>
+    </div>`);
+}
+const GEO_PASTA_DA_CAMADA = { rede_media_tensao:"rede_mt", rede_baixa_tensao:"rede_bt", rede_alta_tensao:"rede_at", reserva_legal:"reserva_legal", app:"app" };
+async function camadaEscolheu(lista){
+  const todos = [...(lista||[])];
+  const arquivos = todos.filter(f=>/\.(geo)?json$/i.test(f.name) && !/^_index\.json$/i.test(f.name) && !/^_resumo/i.test(f.name));
+  const idx = todos.find(f=>/^_index\.json$/i.test(f.name));
+  let indice = {};
+  if(idx){ try{ let t = await idx.text(); if(t.charCodeAt(0)===0xFEFF) t = t.slice(1); indice = JSON.parse(t) || {}; }catch(e){ indice = {}; } }
+  camadaImport = { arquivos, indice };
+  const mb = arquivos.reduce((s,f)=>s+f.size,0)/1048576;
+  const r = document.getElementById("camImpResumo");
+  if(r) r.innerHTML = arquivos.length
+    ? `<div class="note">${ic("info")}<div><b>${arquivos.length}</b> arquivo(s), ${mb.toFixed(1)} MB${idx ? " · com _index.json (nomes dos alimentadores)" : ""}.</div></div>`
+    : `<div class="login-error">${ic("info")}<div>Nenhum .geojson nessa seleção.</div></div>`;
+  const b = document.getElementById("camImpBtn"); if(b) b.disabled = !arquivos.length;
+}
+async function executarImportarCamada(){
+  if(!camadaImport || !camadaImport.arquivos.length) return;
+  const cfg = CADASTROS_BASES[cadastroBaseAtiva];
+  const modo = (document.querySelector('input[name="camImpModo"]:checked')||{}).value || "atualizar";
+  if(modo==="substituir" && !window.confirm(`Substituir: a ${cfg.label} inteira é apagada antes de importar. Continuar?`)) return;
+  const resumo = document.getElementById("camImpResumo");
+  const btn = document.getElementById("camImpBtn"); if(btn) btn.disabled = true;
+  const erros = []; let alims = 0, feicoes = 0;
+  const { arquivos, indice } = camadaImport;
+  const enviar = async (alimentador, features) => {
+    const e = indice[alimentador];
+    const corpo = { alimentador, features };
+    if(typeof e === "string") corpo.nome = e;
+    else if(e && typeof e === "object"){ if(e.nome) corpo.nome = e.nome; if(Array.isArray(e.nomes)) corpo.nomes = e.nomes; if(e.metros!=null) corpo.metros = e.metros; }
+    else { const n = features.find(f=>f && f.properties && f.properties._alimentadorNome); if(n) corpo.nome = String(n.properties._alimentadorNome).split(" / ")[0]; }
+    try{ const r = await apiPost(`/importacao/camadas/${cfg.camada}/alimentador`, corpo, 300000); alims++; feicoes += r.trechos || 0; }
+    catch(err){ let t = err.message; const m = t.match(/\(([^)]+)\)\s*$/); if(m) t = m[1]; erros.push({ arquivo: alimentador, erro: t }); }
+  };
+  try{
+    if(modo==="substituir") await apiDelete(`/importacao/camadas/${cfg.camada}?confirmar=sim`);
+    for(let i = 0; i < arquivos.length; i++){
+      const f = arquivos[i];
+      resumo.innerHTML = barraIndeterminadaHtml(`Gravando ${escapeHtml(f.name)} (${i+1} de ${arquivos.length})… ${alims.toLocaleString("pt-BR")} alimentador(es) gravado(s)`);
+      let geo;
+      try{ let t = await f.text(); if(t.charCodeAt(0)===0xFEFF) t = t.slice(1); geo = JSON.parse(t); }
+      catch(e){ erros.push({ arquivo: f.name, erro: "não é um JSON válido" }); continue; }
+      const feats = Array.isArray(geo && geo.features) ? geo.features : null;
+      if(!feats){ erros.push({ arquivo: f.name, erro: "não tem \"features\" (não é GeoJSON)" }); continue; }
+      // GeoJSON exportado daqui: várias camadas de alimentador num arquivo só (agrupa por _alimentador)
+      if(feats.some(x=>x && x.properties && x.properties._alimentador!=null)){
+        const grupos = new Map();
+        feats.forEach(x=>{ const k = String((x.properties||{})._alimentador ?? f.name.replace(/\.(geo)?json$/i,"")); if(!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(x); });
+        let j = 0;
+        for(const [k, lista] of grupos){
+          j++; resumo.innerHTML = barraIndeterminadaHtml(`Gravando alimentador ${escapeHtml(k)} (${j} de ${grupos.size})…`);
+          await enviar(k, lista);
+        }
+      } else {
+        await enviar(f.name.replace(/\.(geo)?json$/i,""), feats);
+      }
+    }
+    const n = v => Number(v||0).toLocaleString("pt-BR");
+    resumo.innerHTML = `<div class="note" style="background:var(--ok-bg); color:var(--ok-fg);">${ic("check")}<div>
+        Importado: <b>${n(alims)}</b> alimentador(es), <b>${n(feicoes)}</b> feição(ões).${erros.length ? `<br><b>${n(erros.length)}</b> arquivo(s) não entraram (lista abaixo).` : ""}</div></div>
+      ${erros.length ? `<div class="table-wrap" style="max-height:30vh; overflow:auto; margin-top:8px;"><table><thead><tr><th>Arquivo / alimentador</th><th>Problema</th></tr></thead><tbody>
+        ${erros.slice(0,300).map(e=>`<tr><td>${escapeHtml(e.arquivo)}</td><td>${escapeHtml(e.erro)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+    _kmRedeCache = null;
+    await abrirGerenciarCamadas();
+  }catch(err){
+    let t = err.message; const m = t.match(/\(([^)]+)\)\s*$/); if(m) t = m[1];
+    resumo.innerHTML = `<div class="login-error">${ic("info")}<div>Erro: ${escapeHtml(t)}</div></div>`;
+    if(btn) btn.disabled = false;
+  }
+}
 function alimentadorRowHtml(camada, item){
   const idLinha = `${camada}|${item.chave}`;
   const trechosTexto = typeof item.trechos==="number" ? `${item.trechos.toLocaleString("pt-BR")} trecho(s)` : "—";
@@ -9917,114 +10030,8 @@ async function excluirAlimentador(camada, chave){
    uma ação muito mais destrutiva — por isso exige digitar "APAGAR" antes
    do botão Confirmar ligar, uma camada extra de segurança contra clique
    acidental numa ação que não tem volta. */
-/* ---------------- v3.16.1 - Importar sistema antigo (so no Laravel, so admin) ----------------
-   O admin escolhe a pasta "model" do SPARK antigo (PowerShell). O navegador manda cada .json/.tsv
-   em pedacos de 8 MB (passa por qualquer limite de upload) e no fim pede pro servidor rodar o
-   migrar.php numa transacao (se falhar, nada muda).
-   v3.16.6 - POR PARTES: o admin marca o que quer trazer (ex.: so Programacoes); o servidor substitui
-   so as tabelas dos arquivos enviados e o resto do sistema novo fica como esta. */
-const LEGADO_PEDACO = 8 * 1024 * 1024;
-const LEGADO_GRUPOS = [
-  ["usuarios", "Usuários e permissões", /^(usuarios|permissoes|solicitacoes_cadastro)\.json$/],
-  ["programacao", "Programações (com o log)", /^programacao(\.json|_log\.jsonl)$/],
-  ["justificativas", "Justificativas e indisponibilidades", /^(justificativas|indisponibilidades)\.json$/],
-  ["metas", "Metas", /^metas\.json$/],
-  ["equipes", "Equipes", /^equipes\.json$/],
-  ["os", "OS (base atual)", /^manutencao_os\.json$/],
-  ["historico", "Histórico de podas (planos)", /^historico_podas_.*\.json$/],
-  ["ajustes", "Ajustes de OS", /^ajustes_os(\.json|_log\.jsonl)$/],
-  ["rede", "Vão, Proteção, VERA, Postes e Equipamentos", /^(protecao|protecao_alim|vao|vera)\.json$|\.tsv$/],
-  ["rank", "Rank de prioridade e Pontos Nix", /^(rank_listas|rank_itens_.*|nix|nix_meta)\.json$/],
-  ["cadastros", "Cadastros e configurações (esquemas, conjuntos, EW, feriados, listas, ajuda, exclusões, alertas...)", /^(esquemas|conjuntos|alimentador_polo|prioridade_ew|feriados|listas_cadastro|ajuda_faq|exclusoes|alertas_tratados|alertas_config|app_rl_config|prefeituras_config|importacoes_log)\.json$/],
-  ["outros", "Outros arquivos (guardados como vieram: logística, prefeituras, localidades, municípios...)", /./],
-];
-function legadoGrupoDe(nome){ const g = LEGADO_GRUPOS.find(([,,re])=>re.test(nome)); return g ? g[0] : "outros"; }
-let legadoEstado = { arquivos: [], desmarcados: new Set(), rodando: false, msg: "", log: "", erro: false };
-function legadoSelecionados(){ return legadoEstado.arquivos.filter(f=>!legadoEstado.desmarcados.has(legadoGrupoDe(f.name))); }
-function legadoHtml(){
-  const e = legadoEstado;
-  const sel = legadoSelecionados();
-  const totalMb = sel.reduce((s,f)=>s+f.size,0) / 1048576;
-  const grupos = LEGADO_GRUPOS.map(([k,rot])=>{
-    const fs = e.arquivos.filter(f=>legadoGrupoDe(f.name)===k);
-    if(!fs.length) return "";
-    const mb = fs.reduce((s,f)=>s+f.size,0)/1048576;
-    return `<label class="check-row" style="margin:0 0 6px; align-items:flex-start;"><input type="checkbox" ${e.desmarcados.has(k)?"":"checked"} ${e.rodando?"disabled":""} onchange="legadoMarcar('${k}', this.checked)">
-      <span><b>${escapeHtml(rot)}</b> <span style="color:var(--muted); font-size:12px;">— ${fs.length} arquivo(s), ${mb.toFixed(1)} MB: ${escapeHtml(fs.map(f=>f.name).slice(0,6).join(", "))}${fs.length>6?"…":""}</span></span></label>`;
-  }).join("");
-  const comUsuarios = sel.some(f=>f.name==="usuarios.json");
-  return `
-  <div style="max-width:820px;">
-    <h3 style="margin:0 0 6px;">Importar dados do sistema antigo</h3>
-    <p style="color:var(--muted); font-size:13px; margin:0 0 12px;">Escolha a pasta <b>model</b> do SPARK antigo (a que fica ao lado do <code>iniciar.bat</code>) e <b>marque só o que quer trazer</b>.
-      Cada parte marcada <b>substitui</b> a mesma parte do sistema novo; as partes desmarcadas ficam como estão.
-      Se der erro no meio, nada é alterado.</p>
-    <div class="field" style="margin-bottom:12px;"><label>Pasta model</label>
-      <input type="file" id="legadoPasta" webkitdirectory directory multiple onchange="legadoEscolheu(this.files)" ${e.rodando?"disabled":""}></div>
-    ${e.arquivos.length ? `<div style="margin:0 0 12px; padding:10px 12px; border:1px solid var(--line,#ddd); border-radius:10px;">
-        <div style="display:flex; gap:8px; margin-bottom:8px;"><button class="btn btn-ghost btn-sm" onclick="legadoMarcarTodos(true)" ${e.rodando?"disabled":""}>Marcar tudo</button><button class="btn btn-ghost btn-sm" onclick="legadoMarcarTodos(false)" ${e.rodando?"disabled":""}>Desmarcar tudo</button></div>
-        ${grupos}
-        <p style="font-size:12.5px; margin:8px 0 0;">Vai enviar <b>${sel.length}</b> arquivo(s) · ${totalMb.toFixed(1)} MB</p></div>` : ""}
-    ${comUsuarios ? `<div class="note" style="margin-bottom:12px;">${ic("info")}<div>Com <b>Usuários</b> marcado, os usuários passam a entrar com o <b>e-mail e a senha do sistema antigo</b> (todos saem e entram de novo; a auditoria recomeça).
-      Se o seu e-mail não estiver lá, sua conta atual é mantida.</div></div>` : ""}
-    <div class="field" style="margin-bottom:12px;"><label>Para confirmar, digite SUBSTITUIR</label>
-      <input id="legadoConfirma" placeholder="SUBSTITUIR" style="max-width:220px;" ${e.rodando?"disabled":""}></div>
-    <button class="btn btn-primary" onclick="legadoImportar()" ${e.rodando || !sel.length ? "disabled" : ""}>${ic("check")} Importar as partes marcadas</button>
-    ${e.msg ? `<div class="note" style="margin-top:14px; ${e.erro ? "background:var(--bad-bg); color:var(--bad-fg);" : (e.rodando ? "" : "background:var(--ok-bg); color:var(--ok-fg);")}">${ic(e.erro?"info":"check")}<div>${escapeHtml(e.msg)}</div></div>` : ""}
-    ${e.log ? `<details style="margin-top:10px;" ${e.erro?"open":""}><summary style="cursor:pointer; font-size:12.5px;">Detalhes da importação</summary><pre style="font-size:11.5px; max-height:320px; overflow:auto; background:var(--panel-2,#f4f4f4); padding:10px; border-radius:8px;">${escapeHtml(e.log)}</pre></details>` : ""}
-  </div>`;
-}
-function legadoRender(){ const w = document.getElementById("cadastroGridWrap"); if(w && cadastroBaseAtiva==="legado") w.innerHTML = cadastroGridHtml(); }
-function legadoMarcar(k, v){ if(v) legadoEstado.desmarcados.delete(k); else legadoEstado.desmarcados.add(k); legadoRender(); }
-function legadoMarcarTodos(v){ legadoEstado.desmarcados = v ? new Set() : new Set(LEGADO_GRUPOS.map(g=>g[0])); legadoRender(); }
-function legadoEscolheu(lista){
-  // so os arquivos soltos da pasta (ignora subpastas como _locks) e so .json/.jsonl/.tsv
-  legadoEstado.arquivos = [...(lista||[])].filter(f => /^[A-Za-z0-9_\-]{1,120}\.(json|jsonl|tsv)$/.test(f.name) && (f.webkitRelativePath||"").split("/").length <= 2);
-  legadoEstado.desmarcados = new Set();
-  legadoEstado.msg = ""; legadoEstado.log = ""; legadoEstado.erro = false;
-  legadoRender();
-}
-async function legadoImportar(){
-  const conf = (document.getElementById("legadoConfirma")||{}).value || "";
-  if(conf.trim().toUpperCase() !== "SUBSTITUIR"){ toast("Digite SUBSTITUIR para confirmar."); return; }
-  const e = legadoEstado;
-  e.rodando = true; e.erro = false; e.log = "";
-  let lote = null;
-  try{
-    lote = (await apiPost("/importacao/legado/iniciar", {})).lote;
-    const enviar = legadoSelecionados();
-    const total = enviar.reduce((s,f)=>s+f.size,0) || 1;
-    let enviado = 0;
-    for(const f of enviar){
-      for(let pos = 0; pos < f.size || (pos === 0 && f.size === 0); pos += LEGADO_PEDACO){
-        const fd = new FormData();
-        fd.append("nome", f.name); fd.append("offset", String(pos));
-        fd.append("parte", f.slice(pos, pos + LEGADO_PEDACO), f.name);
-        await apiUploadFormData(`/importacao/legado/${lote}/parte`, fd);
-        enviado += Math.min(LEGADO_PEDACO, f.size - pos);
-        e.msg = `Enviando ${f.name}… ${Math.round(enviado*100/total)}%`;
-        legadoRender();
-        if(f.size === 0) break;
-      }
-    }
-    e.msg = "Arquivos enviados. Gravando no banco (pode levar alguns minutos — não feche esta aba)…";
-    legadoRender();
-    const r = await apiPost(`/importacao/legado/${lote}/executar`, { confirmacao: "SUBSTITUIR" }, 3600000);
-    e.rodando = false;
-    e.log = (r && r.log) || "";
-    const trocouUsuarios = enviar.some(f=>f.name==="usuarios.json");
-    e.msg = `Importação concluída (${r.arquivos} arquivos). ` + (!trocouUsuarios ? "Recarregando…" : "Entre de novo " + (r.adminRecolocado ? "com sua conta atual (seu e-mail não estava no sistema antigo)." : "com seu e-mail e a senha do sistema antigo.") + " Recarregando…");
-    legadoRender();
-    setTimeout(()=>location.reload(), 4000);
-  }catch(err){
-    e.rodando = false; e.erro = true;
-    let t = err.message; const m = t.match(/\(([^)]+)\)\s*$/); if(m) t = m[1];
-    e.msg = `Erro: ${t}`;
-    if(lote){ try{ await apiDelete(`/importacao/legado/${lote}`); }catch(x){} }
-    legadoRender();
-  }
-}
-
+/* v3.17.0 - a aba "Importar sistema antigo" saiu (pedido do Mario): cada aba da Gestao de Bases
+   tem o seu Importar/Exportar (Excel, JSON ou GeoJSON), e da para trazer uma base de cada vez. */
 let resetarTudoConfirmando = false;
 let resetarTudoEmAndamento = false;
 let resetarTudoResultado = null;
@@ -10518,10 +10525,6 @@ const CADASTROS_BASES = {
   // pra recomeçar os testes do zero sem editar arquivo na mão. "soAdmin"
   // marca essa aba pra só aparecer pra quem é Administrador de verdade —
   // ver filtrarCadastrosBasesVisiveis() e souAdministrador().
-  // v3.16.1 - so no sistema novo (Laravel): carrega a pasta model/ do sistema antigo inteira
-  legado: {
-    label: "Importar sistema antigo", especial: "legado", soAdmin: true, soLaravel: true,
-  },
   resetar: {
     label: "Apagar tudo", especial: "resetar", soAdmin: true,
   },
@@ -10669,7 +10672,6 @@ function cadastroGridHtmlCore(){
   if(cfg.especial === "resetar"){
     return resetarTudoHtml();
   }
-  if(cfg.especial === "legado") return legadoHtml();
   if(cfg.especial === "rankgestao") return rankGestaoHtml();
   if(cfg.especial === "metas") return metasGestaoHtml();
   if(cfg.especial === "justificativas") return justificativasPaginaHtml();
@@ -10749,7 +10751,6 @@ async function carregarCadastroPagina(){
   if(cfg.especial === "resetar"){
     return; // nada pra carregar — resetarTudoHtml() já renderiza tudo
   }
-  if(cfg.especial === "legado") return; // legadoHtml() já renderiza tudo
   if(cfg.especial === "ativos"){ await ativosGestaoCarregar(); return; }
   if(cfg.especial === "equip"){ await equipGestaoCarregar(); return; }
   if(cfg.especial === "ajuda"){
@@ -10831,7 +10832,7 @@ function podeEditarLinhaBase(){
 }
 function podeEscreverBase(chaveBase){
   const cfg = CADASTROS_BASES[chaveBase || cadastroBaseAtiva];
-  if(!cfg || cfg.especial==="resetar" || cfg.especial==="legado" || cfg.especial==="justificativas" || cfg.especial==="indisp" || cfg.especial==="auditoria" || cfg.especial==="ajuste" || cfg.especial==="rankgestao") return false;
+  if(!cfg || cfg.especial==="resetar" || cfg.especial==="justificativas" || cfg.especial==="indisp" || cfg.especial==="auditoria" || cfg.especial==="ajuste" || cfg.especial==="rankgestao") return false;
   if(!API_ONLINE) return false;
   const mod = (cfg.especial==="metas") ? "metas" : "manutencao";
   return minhaPermissao(mod,"importar") && minhaPermissao(mod,"editar");
@@ -10839,7 +10840,7 @@ function podeEscreverBase(chaveBase){
 function cadastroAcoesHtml(){
   const cfg = CADASTROS_BASES[cadastroBaseAtiva];
   const io = cadastroIoAtivo() && !cadastroVerExcluidos;
-  const exportar = io ? exportarSplitHtml() : "";
+  const exportar = io ? exportarSplitHtml() : camadaAcoesIoHtml();
   if(!podeEscreverBase() || cfg.especial === "ajuda"){
     return exportar ? `<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">${exportar}</div>` : "";
   }

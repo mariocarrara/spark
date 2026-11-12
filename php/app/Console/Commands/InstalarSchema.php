@@ -28,7 +28,18 @@ class InstalarSchema extends Command
                 ALTER TABLE programacao_log ADD COLUMN IF NOT EXISTS os_rem JSONB;
                 ALTER TABLE metas ALTER COLUMN meta_mensal TYPE NUMERIC, ALTER COLUMN meta_diaria TYPE NUMERIC;
                 CREATE UNLOGGED TABLE IF NOT EXISTS cadastro_import (lote UUID NOT NULL, base TEXT NOT NULL, usuario_id TEXT NOT NULL, n INT NOT NULL,
-                    dados JSONB NOT NULL, criado_em TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (lote, n));");
+                    dados JSONB NOT NULL, criado_em TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (lote, n));
+                CREATE TABLE IF NOT EXISTS rede_feicoes (id BIGSERIAL PRIMARY KEY, camada TEXT NOT NULL, alimentador TEXT NOT NULL, atributos JSONB,
+                    geom geometry(Geometry,4326) NOT NULL);
+                CREATE INDEX IF NOT EXISTS rede_feicoes_gix ON rede_feicoes USING GIST (geom);
+                CREATE INDEX IF NOT EXISTS rede_feicoes_alim_ix ON rede_feicoes (camada, alimentador, id);
+                CREATE TABLE IF NOT EXISTS rede_alimentadores (camada TEXT NOT NULL, alimentador TEXT NOT NULL, nome TEXT, nomes JSONB,
+                    trechos INT NOT NULL DEFAULT 0, metros NUMERIC, atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (camada, alimentador));
+                -- v3.17: as tabelas antigas da rede nunca receberam dados (a geo/ nao tinha sido portada)
+                DO \$\$ BEGIN
+                  IF to_regclass('rede_trechos') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM rede_trechos) THEN DROP TABLE rede_trechos; END IF;
+                  IF to_regclass('areas_protegidas') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM areas_protegidas) THEN DROP TABLE areas_protegidas; END IF;
+                END \$\$;");
             $this->info('Banco ja instalado; nada a fazer.');
 
             return self::SUCCESS;

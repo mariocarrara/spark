@@ -5,11 +5,6 @@ return [
     // Pasta do front-end (view/ do legado), servida pelo FrontController.
     'front_dir' => env('SPARK_FRONT_DIR', base_path('../legado-powershell/view')),
 
-    // Importar sistema antigo (Gestao de Bases): script de migracao, tamanho maximo e tempo limite.
-    'migrar_script' => env('SPARK_MIGRAR_SCRIPT', base_path('../migracao/migrar.php')),
-    'legado_max_mb' => (int) env('SPARK_LEGADO_MAX_MB', 4096),
-    'legado_timeout_s' => (int) env('SPARK_LEGADO_TIMEOUT_S', 3600),
-
     // Validade do token de sessao (horas). Renovado a cada uso (janela deslizante).
     'sessao_horas' => (int) env('SPARK_SESSAO_HORAS', 12),
 

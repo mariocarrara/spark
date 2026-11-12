@@ -10,11 +10,11 @@ use App\Http\Controllers\Api\FeriadoController;
 use App\Http\Controllers\Api\ImportacaoBasesController;
 use App\Http\Controllers\Api\ImportacaoController;
 use App\Http\Controllers\Api\ImportacaoGridController;
-use App\Http\Controllers\Api\ImportacaoLegadoController;
 use App\Http\Controllers\Api\IndisponibilidadeController;
 use App\Http\Controllers\Api\JustificativaController;
 use App\Http\Controllers\Api\ListaController;
 use App\Http\Controllers\Api\ManutencaoController;
+use App\Http\Controllers\Api\MapaRedeController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\PendenteController;
 use App\Http\Controllers\Api\PermissaoController;
@@ -77,6 +77,8 @@ Route::middleware('auth:api')->group(function () {
 
     // Gestao de Bases > camadas de rede (lista e apagar; a importacao de KMZ/Shapefile ainda nao foi portada)
     Route::get('/importacao/camadas', [CamadasRedeController::class, 'index']);
+    Route::get('/importacao/camadas/{camada}/exportar', [CamadasRedeController::class, 'exportar']);
+    Route::post('/importacao/camadas/{camada}/alimentador', [CamadasRedeController::class, 'importarAlimentador']);
     Route::delete('/importacao/camadas/{camada}', [CamadasRedeController::class, 'destroyCamada']);
     Route::delete('/importacao/camadas/{camada}/{chave}', [CamadasRedeController::class, 'destroyAlimentador'])->where('chave', '.+');
 
@@ -92,6 +94,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/equip/lista', [CamadasController::class, 'equipLista']);
     Route::get('/equip/cadastro', [CamadasController::class, 'equipCadastro']);
     Route::get('/manutencao/localidades-mapa', [ManutencaoController::class, 'localidadesMapa']);
+    Route::get('/manutencao/camadas', [MapaRedeController::class, 'camadas']);
+    Route::get('/manutencao/km-rede-resumo', [MapaRedeController::class, 'kmRedeResumo']);
     Route::get('/cadastros/conjuntos/mapa', [ManutencaoController::class, 'conjuntosMapa']);
 
     // Gestao de Bases: listagem paginada, novo, editar, excluir (flag), restaurar, apagar tudo
@@ -136,14 +140,6 @@ Route::middleware('auth:api')->group(function () {
     // Importacao das grids de OS (SGM/SIGOD) com progresso ao vivo
     Route::post('/importacao/{segmento}', [ImportacaoGridController::class, 'podas'])
         ->where('segmento', 'podas-executado|podas-pendente|podas-historico|podas-sigod|podas-sigod-pendente');
-
-    // Importar sistema antigo (pasta model/ do PowerShell) - so administrador
-    Route::middleware('admin')->prefix('importacao/legado')->group(function () {
-        Route::post('/iniciar', [ImportacaoLegadoController::class, 'iniciar']);
-        Route::post('/{lote}/parte', [ImportacaoLegadoController::class, 'parte']);
-        Route::post('/{lote}/executar', [ImportacaoLegadoController::class, 'executar']);
-        Route::delete('/{lote}', [ImportacaoLegadoController::class, 'descartar']);
-    });
 
     // TRANSICAO: modulos ainda nao portados que o front le ao abrir (respondem vazio)
     foreach (array_keys(PendenteController::PENDENTES) as $rota) {
