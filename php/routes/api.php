@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CadastroController;
 use App\Http\Controllers\Api\CamadasController;
+use App\Http\Controllers\Api\CamadasRedeController;
 use App\Http\Controllers\Api\EquipeController;
 use App\Http\Controllers\Api\FeriadoController;
 use App\Http\Controllers\Api\ImportacaoBasesController;
@@ -73,6 +74,11 @@ Route::middleware('auth:api')->group(function () {
     Route::delete('/indisponibilidades/{id}', [IndisponibilidadeController::class, 'destroy']);
 
     Route::get('/importacao/log', [ImportacaoController::class, 'log']);
+
+    // Gestao de Bases > camadas de rede (lista e apagar; a importacao de KMZ/Shapefile ainda nao foi portada)
+    Route::get('/importacao/camadas', [CamadasRedeController::class, 'index']);
+    Route::delete('/importacao/camadas/{camada}', [CamadasRedeController::class, 'destroyCamada']);
+    Route::delete('/importacao/camadas/{camada}/{chave}', [CamadasRedeController::class, 'destroyAlimentador'])->where('chave', '.+');
 
     // Mapa de Manutencao
     Route::get('/manutencao/os', [ManutencaoController::class, 'os']);

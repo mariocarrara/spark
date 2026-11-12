@@ -91,7 +91,14 @@ function tratar401SeForCaso(res, path) {
 async function apiGet(path, timeoutMs) {
   const res = await apiFetch(path, timeoutMs ? { timeoutMs } : {});
   tratar401SeForCaso(res, path);
-  if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
+  if (!res.ok) {
+    // v3.16.9 - mostra o motivo que o servidor mandou (ex.: "ainda nao foi migrada para o sistema novo") em vez de so o codigo
+    let detalhe = "";
+    try { detalhe = (await res.json()).erro || ""; } catch (e) { /* corpo nao era JSON */ }
+    const erro = new Error(detalhe ? detalhe : `GET ${path} -> ${res.status}`);
+    erro.status = res.status;
+    throw erro;
+  }
   return res.json();
 }
 
@@ -356,7 +363,7 @@ async function checkApiHealth() {
    (rede, 500, etc.) continua sendo relançado normalmente. */
 function apiGetOuVazio(path, valorPadrao, timeoutMs) {
   return apiGet(path, timeoutMs).catch(err => {
-    if (/->\s*403\b/.test(err.message)) {
+    if (err.status === 403 || /->\s*403\b/.test(err.message)) {
       console.warn(`[SPARK] Sem permissão para ${path} (403) — seguindo com valor vazio.`, err.message);
       return valorPadrao;
     }
