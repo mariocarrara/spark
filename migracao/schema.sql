@@ -217,6 +217,18 @@ CREATE TABLE legado_bruto (
   importado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Gestao de Bases > Importar (por aba): as linhas chegam em pedacos e ficam aqui ate o "aplicar",
+-- que grava tudo de uma vez numa transacao. Lotes velhos (> 1 dia) sao apagados sozinhos.
+CREATE UNLOGGED TABLE IF NOT EXISTS cadastro_import (
+  lote       UUID NOT NULL,
+  base       TEXT NOT NULL,
+  usuario_id TEXT NOT NULL,
+  n          INT  NOT NULL,                       -- ordem da linha no arquivo (a ultima repetida vale)
+  dados      JSONB NOT NULL,                      -- ja com os nomes das colunas da tabela
+  criado_em  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (lote, n)
+);
+
 -- ---------------------------------------------------------------------------
 -- 3. Ordens de servico (base atual e historico por plano)
 --    Plano N = 01/11/(N-1) a 31/10/N. O historico e separado de tudo que e vivo (alertas, rank, mapa de hoje).

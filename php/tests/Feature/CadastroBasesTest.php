@@ -123,6 +123,73 @@ class CadastroBasesTest extends TestCase
         $this->deleteJson('/api/cadastros/municipios?confirmar=sim', [], $h)->assertJson(['apagados' => 2]);
     }
 
+    private function importar(array $h, string $base, array $registros, string $modo = 'atualizar'): array
+    {
+        $lote = $this->postJson("/api/cadastros/{$base}/importar/iniciar", [], $h)->assertOk()->json('lote');
+        $parte = $this->postJson("/api/cadastros/{$base}/importar/{$lote}/parte", ['inicio' => 0, 'registros' => $registros], $h)->assertOk()->json();
+        $fim = $this->postJson("/api/cadastros/{$base}/importar/{$lote}/aplicar", ['modo' => $modo, 'arquivo' => 'teste.xlsx'], $h);
+
+        return [$parte, $fim];
+    }
+
+    public function test_exportar_e_importar_de_volta(): void
+    {
+        $h = $this->usuario('a1', 'Administrador');
+        DB::table('protecoes')->insert(['protecao_id' => 'P1', 'alimentador' => 'AL1']);
+        DB::statement("UPDATE protecoes SET loc = ST_SetSRID(ST_MakePoint(-56.1, -15.6), 4326) WHERE protecao_id = 'P1'");
+        DB::table('protecoes')->insert(['protecao_id' => 'P2', 'alimentador' => 'AL2']);
+        DB::table('exclusoes')->insert(['base' => 'protecao', 'chave' => 'P2']);
+
+        $exp = $this->get('/api/cadastros/protecao/exportar', $h)->assertOk()->streamedContent();
+        $lista = json_decode($exp, true);
+        $this->assertCount(1, $lista);   // o excluido nao sai
+        $this->assertSame(['P1', 'AL1', -15.6, -56.1], [$lista[0]['protecaoId'], $lista[0]['alimentador'], $lista[0]['lat'], $lista[0]['lng']]);
+
+        // atualizar: P1 muda so o que veio, P3 entra; linha ruim e sem chave nao derrubam as outras
+        $lista[0]['zona'] = 'U';
+        [$parte, $fim] = $this->importar($h, 'protecao', [$lista[0], ['protecaoId' => 'P3', 'lat' => '-15,5', 'lng' => '-56'], ['protecaoId' => 'P4', 'lat' => 'x', 'lng' => 1], ['zona' => 'R']]);
+        $this->assertSame(2, $parte['aceitas']);
+        $this->assertSame([3, 4], array_column($parte['erros'], 'linha'));
+        $fim->assertOk()->assertJson(['novos' => 1, 'atualizados' => 1, 'removidos' => 0]);
+        $this->assertSame('U', DB::table('protecoes')->where('protecao_id', 'P1')->value('zona'));
+        $this->assertSame('POINT(-56 -15.5)', DB::selectOne("SELECT ST_AsText(loc) t FROM protecoes WHERE protecao_id='P3'")->t);
+        $this->assertTrue(DB::table('exclusoes')->where('base', 'protecao')->where('chave', 'P2')->exists()); // flag continua
+        $this->assertSame('Gestão de Bases: protecao', DB::table('importacoes_log')->value('base'));
+    }
+
+    public function test_importar_substituir_repetida_e_colunas_ausentes(): void
+    {
+        $h = $this->usuario('a1', 'Administrador');
+        DB::table('vao')->insert([['protecao_id' => 'A', 'polo' => 'X', 'postes' => 1], ['protecao_id' => 'B', 'polo' => 'Y', 'postes' => 2]]);
+        // arquivo sem a coluna "postes": ela fica como estava; A repetida -> vale a ultima
+        [, $fim] = $this->importar($h, 'vao', [['protecaoId' => 'A', 'polo' => 'P1'], ['protecaoId' => 'A', 'polo' => 'P2'], ['protecaoId' => 'C', 'polo' => 'Z']], 'substituir');
+        $fim->assertOk()->assertJson(['novos' => 1, 'atualizados' => 1, 'removidos' => 1, 'repetidasNoArquivo' => 1]);
+        $this->assertSame(['A' => 'P2', 'C' => 'Z'], DB::table('vao')->orderBy('protecao_id')->pluck('polo', 'protecao_id')->all());
+        $this->assertSame(1, DB::table('vao')->where('protecao_id', 'A')->value('postes'));
+
+        // equipes: nome obrigatorio vira o codigo; esquema sem descricao vira vazio
+        $this->importar($h, 'equipes', [['id' => 'EQ9', 'polo' => 'Sinop']])[1]->assertOk();
+        $this->assertSame(['EQ9', true], [DB::table('equipes')->where('id', 'EQ9')->value('nome'), (bool) DB::table('equipes')->where('id', 'EQ9')->value('ativo')]);
+        $this->importar($h, 'esquemas', [['codigo' => 'E9', 'tipo' => 'Poda']])[1]->assertOk();
+        $this->assertSame('', DB::table('esquemas')->where('codigo', 'E9')->value('descricao'));
+        $this->importar($h, 'municipios', [['codigo' => '1', 'nome' => 'Um']])[1]->assertOk()->assertJson(['novos' => 1]);
+    }
+
+    public function test_importar_permissao_e_metas(): void
+    {
+        $this->usuario('a1', 'Administrador');
+        $ver = $this->usuario('u1', 'Consulta', ['manutencao.visualizar', 'manutencao.editar']);
+        $this->postJson('/api/cadastros/vao/importar/iniciar', [], $ver)->assertStatus(403);
+        $this->get('/api/cadastros/vao/exportar', $ver)->assertOk();
+        $adm = $this->usuario('a2', 'Administrador');
+        $this->postJson('/api/cadastros/metas/importar/iniciar', [], $adm)->assertStatus(400);
+        // lote de outra pessoa nao e aplicado
+        $lote = $this->postJson('/api/cadastros/vao/importar/iniciar', [], $adm)->json('lote');
+        $this->postJson("/api/cadastros/vao/importar/{$lote}/parte", ['registros' => [['protecaoId' => 'Z']]], $adm)->assertOk();
+        $outro = $this->usuario('a3', 'Administrador');
+        $this->postJson("/api/cadastros/vao/importar/{$lote}/aplicar", [], $outro)->assertStatus(400);
+    }
+
     public function test_equipes_e_metas_so_excluir_e_restaurar(): void
     {
         $h = $this->usuario('a1', 'Administrador');

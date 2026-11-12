@@ -3,7 +3,8 @@
  * SPARK - migracao model/ (JSON/TSV do PowerShell) -> PostgreSQL + PostGIS
  * Uso:  php -d memory_limit=-1 migrar.php <pasta_model> [dsn] [usuario] [senha]
  * Exemplo: php -d memory_limit=-1 migrar.php amostra/model "pgsql:host=/tmp;port=5433;dbname=spark" postgres ""
- * Repetivel: limpa as tabelas migradas antes de carregar. Usa COPY (rapido) e nao grava senhas em texto aberto.
+ * POR PARTES: so substitui as tabelas cujo arquivo veio na pasta (ex.: so programacao.json -> so as programacoes mudam;
+ * sem usuarios.json os usuarios ficam como estao). Usa COPY (rapido) e nao grava senhas em texto aberto.
  * Tudo numa transacao: se der erro no meio, NADA muda (os dados antigos ficam como estavam).
  * A senha do banco pode vir da variavel de ambiente SPARK_DB_PASS (melhor que na linha de comando).
  * Tambem e chamado pela tela "Gestao de Bases > Importar sistema antigo" (Laravel, ImportacaoLegadoController).
@@ -16,7 +17,7 @@ $user  = $argv[3] ?? 'postgres';
 $pass  = $argv[4] ?? (getenv('SPARK_DB_PASS') ?: '');
 $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $pdo->exec('SET search_path = spark, public');
-if (!is_file("$model/usuarios.json")) { fwrite(STDERR, "ERRO: nao achei usuarios.json em $model (e a pasta model do sistema antigo?)\n"); exit(2); }
+if (!glob("$model/*.{json,jsonl,tsv}", GLOB_BRACE)) { fwrite(STDERR, "ERRO: nenhum arquivo .json/.jsonl/.tsv em $model\n"); exit(2); }
 $pdo->beginTransaction();
 
 function lerJson(string $arq) {
@@ -135,16 +136,21 @@ function unicoArquivo(string $arq, callable $chave): Generator {
     }
 }
 
-echo "Limpando tabelas...\n";
-$pdo->exec("TRUNCATE usuarios, permissoes, sessoes, solicitacoes_cadastro, importacoes_log, equipes, metas, feriados,
-  indisponibilidades, justificativas, listas_cadastro, esquemas, conjuntos, alimentador_polo, prioridade_ew, ajuda_faq,
-  configuracoes, os, os_historico, historico_planos, ajustes_os, ajustes_os_log, programacoes, programacao_log,
-  protecoes, protecao_alimentador, vao, vao_postes, vera, postes, equipamentos, rank_listas, nix, auditoria,
-  alertas_tratados, exclusoes, legado_bruto CASCADE");
-$pdo->exec("ALTER SEQUENCE protecoes_id_seq RESTART; ALTER SEQUENCE conjuntos_id_seq RESTART");
+/** O arquivo veio? Entao a(s) tabela(s) dele sao esvaziadas e recarregadas; senao ficam como estao. */
+function tem(string $arq): bool { global $model; return is_file("$model/$arq"); }
+$pulados = [];
+function parte(PDO $pdo, string $arq, string $tabelas): bool {
+    global $pulados;
+    if (!tem($arq)) { $pulados[] = $arq; return false; }
+    $pdo->exec("TRUNCATE $tabelas CASCADE");
+    return true;
+}
+echo "Substitui so as partes cujo arquivo veio na pasta.\n";
 
 // ---------------- usuarios / permissoes ----------------
 echo "Usuarios e permissoes\n";
+$us = [];
+if (parte($pdo, 'usuarios.json', 'usuarios, sessoes, auditoria')) {   // permissoes caem junto (FK); ids mudam, entao sessoes e auditoria tambem
 $us = lerJson("$model/usuarios.json") ?? [];
 copiar($pdo, 'usuarios', ['id','nome','email','senha_hash','senha_legada','status_conta','perfil_base'],
   (function () use ($us) { foreach ($us as $u) {
@@ -152,7 +158,9 @@ copiar($pdo, 'usuarios', ['id','nome','email','senha_hash','senha_legada','statu
       $senhaInutil = ($u['origem'] ?? '') === 'solicitacao' && ($u['statusConta'] ?? '') === 'PendenteAprovacao' && empty($u['senhaDefinida']);
       yield [$u['id'], $u['nome'] ?? '', $u['email'] ?? '', null, $senhaInutil ? null : nn($u['senha'] ?? null), $u['statusConta'] ?? 'Ativo', $u['perfilBase'] ?? 'Consulta'];
   } })());
-$ids = array_column($us, 'id', 'id');
+}
+$ids = array_flip($pdo->query('SELECT id FROM usuarios')->fetchAll(PDO::FETCH_COLUMN));
+if (parte($pdo, 'permissoes.json', 'permissoes'))
 copiar($pdo, 'permissoes', ['usuario_id','modulo','acao'],
   (function () use ($model, $ids) {
     foreach (lerJson("$model/permissoes.json") ?? [] as $p) {
@@ -162,33 +170,46 @@ copiar($pdo, 'permissoes', ['usuario_id','modulo','acao'],
         if (!isset($mz['alertas']['visualizar']) || !is_bool($mz['alertas']['visualizar'])) $mz['alertas']['visualizar'] = !empty($mz['manutencao']['visualizar']);
         foreach ($mz as $mod => $acoes) foreach ((array)$acoes as $acao => $ok) if ($ok) yield [$p['usuarioId'], $mod, $acao];
     } })());
+if (parte($pdo, 'solicitacoes_cadastro.json', 'solicitacoes_cadastro'))
 copiar($pdo, 'solicitacoes_cadastro', ['id','email','status','criado_em','decidido_em','decidido_por'],
   (function () use ($model) { foreach (lerJson("$model/solicitacoes_cadastro.json") ?? [] as $s) yield [$s['id'], $s['email'], $s['status'] ?? 'Pendente', $s['criadoEm'], nn($s['decididoEm'] ?? null), nn($s['decididoPor'] ?? null)]; })());
+if (parte($pdo, 'importacoes_log.json', 'importacoes_log'))
 copiar($pdo, 'importacoes_log', ['id','data_hora','usuario_id','base','arquivo_origem','registros_processados','registros_com_erro'],
   (function () use ($model) { foreach (unico(lerJson("$model/importacoes_log.json") ?? [], fn($x) => $x['id']) as $i) yield [$i['id'], $i['dataHora'], nn($i['usuarioId'] ?? null), $i['base'] ?? '', nn($i['arquivoOrigem'] ?? null), (int)($i['registrosProcessados'] ?? 0), (int)($i['registrosComErro'] ?? 0)]; })());
 
 // ---------------- cadastros ----------------
 echo "Cadastros\n";
+if (parte($pdo, 'equipes.json', 'equipes'))
 copiar($pdo, 'equipes', ['id','nome','tipo_equipe','polo','regional','departamento','proprio_terceiro','equipe_poda','base','ativo'],
   (function () use ($model) { foreach (unico(lerJson("$model/equipes.json") ?? [], fn($x) => $x['id']) as $e) yield [$e['id'], $e['nome'] ?? $e['id'], nn($e['tipoEquipe'] ?? null), nn($e['polo'] ?? null), nn($e['regional'] ?? null), nn($e['departamento'] ?? null), nn($e['proprioTerceiro'] ?? null), (bool)($e['equipePoda'] ?? false), pt($e['baseLat'] ?? null, $e['baseLng'] ?? null), (bool)($e['ativo'] ?? true)]; })());
+if (parte($pdo, 'metas.json', 'metas'))
 copiar($pdo, 'metas', ['id','equipe_id','tipo','ano_mes','meta_mensal','dias_uteis','meta_diaria','origem','atualizado_por','atualizado_em'],
   (function () use ($model) { foreach (primeiroPorChave(lerJson("$model/metas.json") ?? [], fn($x) => $x['equipeId'] . '|' . ($x['tipo'] ?? 'poda') . '|' . $x['anoMes']) as $m) yield [$m['id'], $m['equipeId'], $m['tipo'] ?? 'poda', $m['anoMes'], $m['metaMensal'], (int)($m['diasUteis'] ?? 21), $m['metaDiaria'] ?? null, nn($m['origem'] ?? null), nn($m['atualizadoPor'] ?? null), nn($m['atualizadoEm'] ?? null)]; })());
+if (parte($pdo, 'feriados.json', 'feriados'))
 copiar($pdo, 'feriados', ['data','descricao','abrangencia'],
   (function () use ($model) { foreach (unico(lerJson("$model/feriados.json") ?? [], fn($x) => $x['data']) as $f) yield [$f['data'], $f['descricao'] ?? '', $f['abrangencia'] ?? 'Nacional']; })());
+if (parte($pdo, 'indisponibilidades.json', 'indisponibilidades'))
 copiar($pdo, 'indisponibilidades', ['id','equipe_id','data_inicio','data_fim','tipo','texto','autor_id','criado_em','excluido','excluido_por','excluido_em'],
   (function () use ($model) { foreach (lerJson("$model/indisponibilidades.json") ?? [] as $i) yield [$i['id'], $i['equipeId'], $i['dataInicio'], $i['dataFim'], nn($i['tipo'] ?? null), nn($i['texto'] ?? null), nn($i['autorId'] ?? null), nn($i['criadoEm'] ?? null), (bool)($i['excluido'] ?? false), nn($i['excluidoPor'] ?? null), nn($i['excluidoEm'] ?? null)]; })());
+if (parte($pdo, 'justificativas.json', 'justificativas'))
 copiar($pdo, 'justificativas', ['id','data','equipe_id','tipo','texto','autor_id','criado_em','excluido','excluido_por','excluido_em'],
   (function () use ($model) { foreach (lerJson("$model/justificativas.json") ?? [] as $i) yield [$i['id'], $i['data'], $i['equipeId'], nn($i['tipo'] ?? null), nn($i['texto'] ?? null), nn($i['autorId'] ?? null), nn($i['criadoEm'] ?? null), (bool)($i['excluido'] ?? false), nn($i['excluidoPor'] ?? null), nn($i['excluidoEm'] ?? null)]; })());
+if (parte($pdo, 'listas_cadastro.json', 'listas_cadastro'))
 copiar($pdo, 'listas_cadastro', ['id','lista','nome','ordem','ativo','excluido'],
   (function () use ($model) { foreach (lerJson("$model/listas_cadastro.json") ?? [] as $l) yield [$l['id'], $l['lista'], $l['nome'], (int)($l['ordem'] ?? 0), (bool)($l['ativo'] ?? true), (bool)($l['excluido'] ?? false)]; })());
+if (parte($pdo, 'esquemas.json', 'esquemas'))
 copiar($pdo, 'esquemas', ['codigo','descricao','tipo'],
   (function () use ($model) { foreach (unico(lerJson("$model/esquemas.json") ?? [], fn($x) => $x['codigo']) as $e) yield [$e['codigo'], $e['descricao'] ?? '', nn($e['tipo'] ?? null)]; })());
+if (parte($pdo, 'conjuntos.json', 'conjuntos') && $pdo->exec('ALTER SEQUENCE conjuntos_id_seq RESTART') !== false)
 copiar($pdo, 'conjuntos', ['regional','sigla','tensao_nominal','cod_conjunto','nome_conjunto','alimentador','tensao'],
   (function () use ($model) { foreach (lerJson("$model/conjuntos.json") ?? [] as $c) yield [nn($c['regional'] ?? null), nn($c['sigla'] ?? null), nn($c['tensaoNominal'] ?? null), nn($c['codConjunto'] ?? null), nn($c['nomeConjunto'] ?? null), nn($c['alimentador'] ?? null), nn($c['tensao'] ?? null)]; })());
+if (parte($pdo, 'alimentador_polo.json', 'alimentador_polo'))
 copiar($pdo, 'alimentador_polo', ['alimentador','polo','regional'],
   (function () use ($model) { foreach (unico(lerJson("$model/alimentador_polo.json") ?? [], fn($x) => $x['alimentador']) as $a) yield [$a['alimentador'], nn($a['polo'] ?? null), nn($a['regional'] ?? null)]; })());
+if (parte($pdo, 'prioridade_ew.json', 'prioridade_ew'))
 copiar($pdo, 'prioridade_ew', ['chave','grupo_recurso','prioridade_ew','prioridade','regional','tensao'],
   (function () use ($model) { foreach (unico(lerJson("$model/prioridade_ew.json") ?? [], fn($x) => $x['chave']) as $p) yield [$p['chave'], nn($p['grupoRecurso'] ?? null), nn($p['prioridadeEW'] ?? null), nn($p['prioridade'] ?? null), nn($p['regional'] ?? null), nn($p['tensao'] ?? null)]; })());
+if (parte($pdo, 'ajuda_faq.json', 'ajuda_faq'))
 copiar($pdo, 'ajuda_faq', ['id','categoria','pergunta','resposta','palavras','ordem','ativo','excluido'],
   (function () use ($model) { foreach (lerJson("$model/ajuda_faq.json") ?? [] as $a) yield [$a['id'], nn($a['categoria'] ?? null), $a['pergunta'], $a['resposta'], nn($a['palavras'] ?? null), (int)($a['ordem'] ?? 0), (bool)($a['ativo'] ?? true), (bool)($a['excluido'] ?? false)]; })());
 $cfg = [];
@@ -197,6 +218,7 @@ $nm = lerJson("$model/nix_meta.json"); if ($nm) $cfg[] = ['nix_meta', $nm[0], $n
 // v3.16.2 - configuracoes feitas pelos usuarios que antes ficavam de fora
 $ar = lerJson("$model/app_rl_config.json"); if ($ar) $cfg[] = ['app_rl', $ar[0] ?? $ar, $ar[0]['atualizadoEm'] ?? null, $ar[0]['atualizadoPor'] ?? null];
 $pc = lerJson("$model/prefeituras_config.json"); if ($pc) $cfg[] = ['prefeituras_config', $pc, null, null];
+if ($cfg) { $del = $pdo->prepare('DELETE FROM configuracoes WHERE chave = ?'); foreach ($cfg as $c) $del->execute([$c[0]]); }   // so as chaves cujos arquivos vieram
 copiar($pdo, 'configuracoes', ['chave','valor','atualizado_em','atualizado_por'], (function () use ($cfg) { foreach ($cfg as $c) yield [$c[0], $c[1], $c[2] ?? date('c'), $c[3]]; })());
 
 // ---------------- OS (base atual e historico) ----------------
@@ -213,50 +235,64 @@ function linhaOs(array $o): array {
 }
 echo "OS (base atual)\n";
 // em fluxo: o arquivo tem ~100 MB (ver lerJsonItens)
+if (parte($pdo, 'manutencao_os.json', 'os'))
 copiar($pdo, 'os', $colsOs, (function () use ($model) { foreach (unicoArquivo("$model/manutencao_os.json", fn($x) => $x['id']) as $o) yield linhaOs($o); })(), 'os (base atual)');
 echo "OS (historico por plano)\n";
 foreach (glob("$model/historico_podas_20*.json") as $arq) {
     if (!preg_match('/historico_podas_(\d{4})\.json$/', $arq, $m)) continue;
     $plano = (int)$m[1];
+    $pdo->prepare('DELETE FROM os_historico WHERE plano = ?')->execute([$plano]);   // so o plano que veio
     copiar($pdo, 'os_historico', array_merge($colsOs, ['plano']), (function () use ($arq, $plano) { foreach (unicoArquivo($arq, fn($x) => $x['id']) as $o) yield array_merge(linhaOs($o), [$plano]); })(), "os_historico plano $plano");
 }
+if (parte($pdo, 'historico_podas_meta.json', 'historico_planos'))
 copiar($pdo, 'historico_planos', ['plano','total','inicio','fim','atualizado_em','usuario_id','modo','novas','atualizadas','arquivos'],
   (function () use ($model) { foreach (lerJson("$model/historico_podas_meta.json") ?? [] as $p) yield [$p['plano'], $p['total'], $p['inicio'], $p['fim'], nn($p['atualizadoEm'] ?? null), nn($p['usuarioId'] ?? null), nn($p['modo'] ?? null), $p['novas'] ?? null, $p['atualizadas'] ?? null, nn($p['arquivos'] ?? null)]; })());
+if (parte($pdo, 'ajustes_os.json', 'ajustes_os'))
 copiar($pdo, 'ajustes_os', ['os_id','alimentador','tipo_equipe','protecao_id','equipe_id','criado_por','criado_em','atualizado_por','atualizado_em'],
   (function () use ($model) { foreach (unico(lerJson("$model/ajustes_os.json") ?? [], fn($x) => $x['id']) as $a) yield [$a['id'], nn($a['alimentador'] ?? null), nn($a['tipoEquipe'] ?? null), nn($a['protecaoId'] ?? null), nn($a['equipeId'] ?? null), nn($a['criadoPor'] ?? null), nn($a['criadoEm'] ?? null), nn($a['atualizadoPor'] ?? null), nn($a['atualizadoEm'] ?? null)]; })());
-if (is_file("$model/ajustes_os_log.jsonl")) copiar($pdo, 'ajustes_os_log', ['momento','usuario_id','os_id','acao','de','para'],
+if (parte($pdo, 'ajustes_os_log.jsonl', 'ajustes_os_log')) copiar($pdo, 'ajustes_os_log', ['momento','usuario_id','os_id','acao','de','para'],
   (function () use ($model) { foreach (file("$model/ajustes_os_log.jsonl", FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $ln) { $j = json_decode($ln, true); if ($j) yield [$j['t'], nn($j['u'] ?? null), $j['os'] ?? '', $j['a'] ?? '', $j['de'] ?? null, $j['para'] ?? null]; } })());
 
 // ---------------- programacao ----------------
 echo "Programacao\n";
-$pg = lerJson("$model/programacao.json") ?? [];
+$pg = parte($pdo, 'programacao.json', 'programacoes') ? (lerJson("$model/programacao.json") ?? []) : [];   // equipes/OS/log da programacao caem junto
+if ($pg) {
 copiar($pdo, 'programacoes', ['id','tipo_programacao','status','data_inicio','data_fim','protecao_id','alimentador','localidade','regional','polo','plano','tipo_plano','equipe_necessaria','desligamento','numero_sis','observacao','origem_tela','previsto_concluir','programador_id','exec_snap','criado_em','atualizado_em'],
   (function () use ($pg) { foreach (unico($pg, fn($x) => uuidDe($x['id'])) as $p) yield [uuidDe($p['id']), $p['tipoProgramacao'] ?? 'Poda', $p['status'], $p['dataInicio'], $p['dataFim'], nn($p['protecaoId'] ?? null), nn($p['alimentador'] ?? null), nn($p['localidade'] ?? null), nn($p['regional'] ?? null), nn($p['polo'] ?? null), nn($p['plano'] ?? null), nn($p['tipoPlano'] ?? null), nn($p['equipeNecessaria'] ?? null), nn($p['desligamento'] ?? null), nn($p['numeroSIS'] ?? null), nn($p['observacao'] ?? null), nn($p['origemTela'] ?? null), (bool)($p['previstoConcluir'] ?? false), nn($p['programadorId'] ?? null), (empty($p['execSnap']) ? null : array_values((array)$p['execSnap'])), $p['criadoEm'], $p['atualizadoEm'] ?? $p['criadoEm']]; })());
 copiar($pdo, 'programacao_equipes', ['programacao_id','equipe_id'],
   (function () use ($pg) { $v = []; foreach ($pg as $p) foreach (array_unique($p['equipesIds'] ?? []) as $e) { $k = uuidDe($p['id']) . '|' . $e; if (!isset($v[$k])) { $v[$k] = 1; yield [uuidDe($p['id']), $e]; } } })());
 copiar($pdo, 'programacao_os', ['programacao_id','os_id','ordem','snapshot'],
   (function () use ($pg) { $v = []; foreach ($pg as $p) { $snap = []; foreach ($p['osSnap'] ?? [] as $s) $snap[$s['id']] = $s; foreach (array_values($p['osIds'] ?? []) as $i => $oid) { $k = uuidDe($p['id']) . '|' . $oid; if (isset($v[$k])) continue; $v[$k] = 1; yield [uuidDe($p['id']), $oid, $i, $snap[$oid] ?? null]; } } })());
+}
 unset($pg);
-if (is_file("$model/programacao_log.jsonl")) copiar($pdo, 'programacao_log', ['programacao_id','momento','usuario_id','acao','resumo','ref','mudancas','os_add','os_rem'],
-  (function () use ($model) { foreach (file("$model/programacao_log.jsonl", FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $ln) { $j = json_decode($ln, true); if ($j && !empty($j['p'])) yield [uuidDe($j['p']), $j['t'], nn($j['u'] ?? null), $j['a'] ?? '', nn($j['r'] ?? null), nn($j['ref'] ?? null), $j['m'] ?? null, empty($j['add']) ? null : array_values((array)$j['add']), empty($j['rem']) ? null : array_values((array)$j['rem'])]; } })());
+$progIds = array_flip($pdo->query('SELECT id::text FROM programacoes')->fetchAll(PDO::FETCH_COLUMN));
+if (parte($pdo, 'programacao_log.jsonl', 'programacao_log')) copiar($pdo, 'programacao_log', ['programacao_id','momento','usuario_id','acao','resumo','ref','mudancas','os_add','os_rem'],
+  (function () use ($model, $progIds) { foreach (file("$model/programacao_log.jsonl", FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $ln) { $j = json_decode($ln, true); if ($j && !empty($j['p']) && isset($progIds[uuidDe($j['p'])])) yield [uuidDe($j['p']), $j['t'], nn($j['u'] ?? null), $j['a'] ?? '', nn($j['r'] ?? null), nn($j['ref'] ?? null), $j['m'] ?? null, empty($j['add']) ? null : array_values((array)$j['add']), empty($j['rem']) ? null : array_values((array)$j['rem'])]; } })());
 
 // ---------------- rede / protecoes / postes / equipamentos ----------------
 echo "Protecoes, vao, VERA\n";
+if (parte($pdo, 'protecao.json', 'protecoes') && $pdo->exec('ALTER SEQUENCE protecoes_id_seq RESTART') !== false)
 copiar($pdo, 'protecoes', ['protecao_id','prot_elemento','protecao2','alimentador','trecho','trecho_t4','zona','plano_easywork','loc'],
   (function () use ($model) { foreach (lerJsonItens("$model/protecao.json") as $p) yield [$p['protecaoId'], nn($p['protElemento'] ?? null), nn($p['protecao2'] ?? null), nn($p['alimentador'] ?? null), nn($p['trecho'] ?? null), nn($p['trechoT4'] ?? null), nn($p['zona'] ?? null), nn($p['planoEasyWork'] ?? null), pt($p['lat'] ?? null, $p['lng'] ?? null)]; })());
+if (parte($pdo, 'protecao_alim.json', 'protecao_alimentador'))
 copiar($pdo, 'protecao_alimentador', ['alimentador','protecao_id'],
   (function () use ($model) { $v = []; foreach (lerJson("$model/protecao_alim.json") ?? [] as $x) { $k = $x['a'] . '|' . $x['p']; if (!isset($v[$k])) { $v[$k] = 1; yield [$x['a'], $x['p']]; } } })());
+if (parte($pdo, 'vao.json', 'vao'))
 copiar($pdo, 'vao', ['protecao_id','polo','regional','postes','rota_km'],
   (function () use ($model) { foreach (unicoArquivo("$model/vao.json", fn($x) => $x['protecaoId']) as $x) yield [$x['protecaoId'], nn($x['polo'] ?? null), nn($x['regional'] ?? null), (int)($x['postes'] ?? 0), $x['rotaKm'] ?? 0]; })());
+if (parte($pdo, 'vera.json', 'vera'))
 copiar($pdo, 'vera', ['id_vera','especie','cidade','alimentador','loc'],
   (function () use ($model) { foreach (unicoArquivo("$model/vera.json", fn($x) => $x['idVera']) as $x) yield [$x['idVera'], nn($x['especie'] ?? null), nn($x['cidade'] ?? null), nn($x['alimentador'] ?? null), pt($x['lat'] ?? null, $x['lng'] ?? null)]; })());
 
 function tsv(string $arq): Generator { if (!is_file($arq)) return; $h = fopen($arq, 'r'); while (($l = fgets($h)) !== false) { $l = rtrim($l, "\r\n"); if ($l !== '') yield explode("\t", $l); } fclose($h); }
 echo "Postes, vao_postes e equipamentos\n";
-copiar($pdo, 'vao_postes', ['poste_id','rota_km'], (function () use ($model) { $v = []; foreach (tsv("$model/vao_postes.tsv") as $c) { if (isset($v[$c[0]])) continue; $v[$c[0]] = 1; yield [$c[0], $c[1]]; } })());
+if (parte($pdo, 'vao_postes.tsv', 'vao_postes')) copiar($pdo, 'vao_postes', ['poste_id','rota_km'], (function () use ($model) { $v = []; foreach (tsv("$model/vao_postes.tsv") as $c) { if (isset($v[$c[0]])) continue; $v[$c[0]] = 1; yield [$c[0], $c[1]]; } })());
+if (parte($pdo, 'postes.tsv', 'postes'))
 copiar($pdo, 'postes', ['cod_id','tipo','area_local','conjunto','loc','municipio'],
   (function () use ($model) { $v = []; foreach (tsv("$model/postes.tsv") as $c) { if (isset($v[$c[0]])) continue; $p = pt($c[4] ?? null, $c[5] ?? null); if ($p === null) continue; $v[$c[0]] = 1; yield [$c[0], nn($c[1]), nn($c[2]), nn($c[3]), $p, nn($c[6] ?? null)]; } })());
 foreach (['trafos', 'protecoes', 'capacitores', 'reguladores'] as $camada) {
+    if (!tem("equip_$camada.tsv")) { $pulados[] = "equip_$camada.tsv"; continue; }
+    $pdo->prepare('DELETE FROM equipamentos WHERE camada = ?')->execute([$camada]);
     $nomes = [];
     foreach (tsv("$model/equip_nomes_$camada.tsv") as $c) $nomes[$c[0]] = nn($c[1] ?? null);
     copiar($pdo, 'equipamentos', ['camada','cod_id','poste','loc','ctmt','conj','v0','v1','v2','v3','v4','nome_operativo'],
@@ -265,29 +301,33 @@ foreach (['trafos', 'protecoes', 'capacitores', 'reguladores'] as $camada) {
 
 // ---------------- rank e nix ----------------
 echo "Rank e Nix\n";
-$rl = lerJson("$model/rank_listas.json") ?? [];
-copiar($pdo, 'rank_listas', ['id','enviado_em','enviado_por','enviado_por_nome','arquivo','aba','referencia','origem','autor_arquivo','criado_arquivo_em','modificado_arquivo_em','hash','linhas','com_data','rejeitadas'],
+$rl = parte($pdo, 'rank_listas.json', 'rank_listas') ? (lerJson("$model/rank_listas.json") ?? []) : [];   // itens caem junto
+if (tem('rank_listas.json')) copiar($pdo, 'rank_listas', ['id','enviado_em','enviado_por','enviado_por_nome','arquivo','aba','referencia','origem','autor_arquivo','criado_arquivo_em','modificado_arquivo_em','hash','linhas','com_data','rejeitadas'],
   (function () use ($rl) { foreach ($rl as $r) yield [$r['id'], nn($r['enviadoEm'] ?? null), nn($r['enviadoPor'] ?? null), nn($r['enviadoPorNome'] ?? null), nn($r['arquivo'] ?? null), nn($r['aba'] ?? null), nn($r['referencia'] ?? null), nn($r['origem'] ?? null), nn($r['autorArquivo'] ?? null), nn($r['criadoArquivoEm'] ?? null), nn($r['modificadoArquivoEm'] ?? null), nn($r['hash'] ?? null), $r['linhas'] ?? null, $r['comData'] ?? null, $r['rejeitadas'] ?? null]; })());
 foreach ($rl as $r) {
     $it = lerJson("$model/rank_itens_{$r['id']}.json") ?? [];
     copiar($pdo, 'rank_itens', ['lista_id','posicao','elemento','dec','trecho','alim','reg','polo','conj','plano','di','df'],
       (function () use ($it, $r) { $v = []; foreach ($it as $x) { if (isset($v[$x['r']])) continue; $v[$x['r']] = 1; yield [$r['id'], $x['r'], $x['e'], $x['dec'] ?? null, nn($x['trecho'] ?? null), nn($x['alim'] ?? null), nn($x['reg'] ?? null), nn($x['polo'] ?? null), nn($x['conj'] ?? null), nn($x['plano'] ?? null), dt($x['di'] ?? null), dt($x['df'] ?? null)]; } })(), "rank_itens {$r['id']}");
 }
-$nx = lerJson("$model/nix.json") ?? [];
+$nx = parte($pdo, 'nix.json', 'nix') ? (lerJson("$model/nix.json") ?? []) : [];   // pontos caem junto
+if (tem('nix.json')) {
 copiar($pdo, 'nix', ['id','elemento','ranque','trecho','alim','reg','conj','tensao','dh','ppf','manual','criado_por','criado_em'],
   (function () use ($nx) { foreach ($nx as $i => $n) yield [$n['id'] ?? ('nx-i' . $i), $n['e'], nn($n['ranque'] ?? null), nn($n['trecho'] ?? null), nn($n['alim'] ?? null), nn($n['reg'] ?? null), nn($n['conj'] ?? null), nn($n['tensao'] ?? null), nn($n['dh'] ?? null), nn($n['ppf'] ?? null), (bool)($n['manual'] ?? false), nn($n['criadoPor'] ?? null), nn($n['criadoEm'] ?? null)]; })());
 copiar($pdo, 'nix_pontos', ['nix_id','ordem','loc'],
   (function () use ($nx) { foreach ($nx as $i => $n) foreach (array_values($n['pontos'] ?? []) as $k => $p) { $g = pt($p['lat'] ?? null, $p['lng'] ?? null); if ($g) yield [$n['id'] ?? ('nx-i' . $i), $k, $g]; } })());
+}
 
 // ---------------- v3.16.2 - trabalho dos usuarios que antes ficava de fora ----------------
 echo "Alertas tratados, exclusoes e arquivos sem tabela propria\n";
 $idPorNome = [];
-foreach ($us as $u) if (!empty($u['nome'])) $idPorNome[mb_strtolower(trim($u['nome']))] = $u['id'];
+foreach ($pdo->query('SELECT id, nome FROM usuarios') as $u) if (!empty($u['nome'])) $idPorNome[mb_strtolower(trim($u['nome']))] = $u['id'];   // usuarios do banco (podem nao ter vindo agora)
+if (parte($pdo, 'alertas_tratados.json', 'alertas_tratados'))
 copiar($pdo, 'alertas_tratados', ['tipo','chave','status','usuario_id','atualizado_em'],
   (function () use ($model, $idPorNome) { foreach (unico(lerJson("$model/alertas_tratados.json") ?? [], fn($x) => ($x['tipo'] ?? '') . '|' . ($x['chave'] ?? '')) as $a) {
       if (empty($a['tipo']) || !isset($a['chave']) || empty($a['status'])) continue;
       yield [$a['tipo'], (string)$a['chave'], $a['status'], $idPorNome[mb_strtolower(trim((string)($a['por'] ?? '')))] ?? null, nn($a['em'] ?? null) ?? date('c')];
   } })());
+if (parte($pdo, 'exclusoes.json', 'exclusoes'))
 copiar($pdo, 'exclusoes', ['base','chave','em','por'],
   (function () use ($model) { foreach (unico(lerJson("$model/exclusoes.json") ?? [], fn($x) => ($x['base'] ?? '') . '|' . ($x['chave'] ?? '')) as $e) {
       if (empty($e['base']) || !isset($e['chave'])) continue;
@@ -297,7 +337,7 @@ copiar($pdo, 'exclusoes', ['base','chave','em','por'],
 $lidos = ['ajuda_faq','ajustes_os','ajustes_os_log','alertas_config','alertas_tratados','alimentador_polo','app_rl_config','conjuntos','equipes','esquemas',
   'exclusoes','feriados','historico_podas_meta','importacoes_log','indisponibilidades','justificativas','listas_cadastro','manutencao_os','metas','nix','nix_meta',
   'permissoes','prefeituras_config','prioridade_ew','programacao','programacao_log','protecao','protecao_alim','rank_listas','solicitacoes_cadastro','usuarios','vao','vera'];
-$brutoSt = $pdo->prepare('INSERT INTO legado_bruto (entidade, dados) VALUES (?, ?::jsonb)');
+$brutoSt = $pdo->prepare('INSERT INTO legado_bruto (entidade, dados) VALUES (?, ?::jsonb) ON CONFLICT (entidade) DO UPDATE SET dados = EXCLUDED.dados, importado_em = now()');   // so a entidade que veio
 $nBruto = 0;
 foreach (glob("$model/*.json") ?: [] as $arq) {
     $ent = basename($arq, '.json');
@@ -322,6 +362,7 @@ foreach (glob("$model/*.jsonl") ?: [] as $arq) {
 }
 echo "  $nBruto arquivo(s) sem tabela propria guardados intactos em legado_bruto\n";
 
+if ($pulados) echo "\nMantidos como estavam (arquivo nao veio): " . implode(', ', $pulados) . "\n";
 $pdo->commit();
 echo "\nVACUUM ANALYZE...\n";
 $pdo->exec('VACUUM ANALYZE');   // fora da transacao (o Postgres nao deixa dentro)

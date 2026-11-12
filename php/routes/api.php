@@ -90,6 +90,10 @@ Route::middleware('auth:api')->group(function () {
 
     // Gestao de Bases: listagem paginada, novo, editar, excluir (flag), restaurar, apagar tudo
     Route::get('/cadastros/{base}', [CadastroController::class, 'index']);
+    Route::get('/cadastros/{base}/exportar', [CadastroController::class, 'exportar']);
+    Route::post('/cadastros/{base}/importar/iniciar', [CadastroController::class, 'importarIniciar']);
+    Route::post('/cadastros/{base}/importar/{lote}/parte', [CadastroController::class, 'importarParte']);
+    Route::post('/cadastros/{base}/importar/{lote}/aplicar', [CadastroController::class, 'importarAplicar']);
     Route::post('/cadastros/{base}', [CadastroController::class, 'store']);
     Route::delete('/cadastros/{base}', [CadastroController::class, 'destroyTodos']);
     Route::post('/cadastros/{base}/{chave}/restaurar', [CadastroController::class, 'restaurar'])->where('chave', '.+');

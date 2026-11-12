@@ -307,6 +307,252 @@ class CadastroController extends Controller
         return response()->json(['base' => $base, 'apagados' => $qtd]);
     }
 
+    // ------------------------------------------------------------------ exportar / importar (por aba)
+
+    /** Coluna NOT NULL -> valor usado quando a linha nova nao traz (expressao SQL sobre a linha importada "i"). */
+    private const OBRIGATORIAS = [
+        'equipes' => ['nome' => 'i.id', 'equipe_poda' => 'false', 'ativo' => 'true'],
+        'esquemas' => ['descricao' => "''"],
+    ];
+
+    private const MAX_LINHAS_PARTE = 10000;
+
+    /** GET /cadastros/{base}/exportar — a base inteira (sem os excluidos), no formato da listagem. Excel e montado no navegador. */
+    public function exportar(Request $r, string $base)
+    {
+        if (! $cfg = self::cfg($base)) {
+            return self::desconhecida($base);
+        }
+        if (! $r->user()->pode('manutencao', 'visualizar')) {
+            return response()->json(['erro' => "Sem permissão para visualizar {$base}."], 403);
+        }
+        Auditoria::registrar('exportar', "cadastros/{$base}", null, $r->user()->id, [], $r->ip());
+        if (isset($cfg['bruto'])) {
+            $excl = DB::table('exclusoes')->where('base', $base)->pluck('chave')->flip();
+
+            return response()->json(array_values(array_filter(self::bruto($cfg['bruto']), fn ($reg) => ! isset($excl[(string) ($reg[$cfg['chave']] ?? '')]))));
+        }
+        $kc = self::col($cfg, $cfg['chave']);
+        $q = DB::table($cfg['tabela'].' AS t')->select('t.*')
+            ->whereNotExists(fn ($s) => $s->select(DB::raw(1))->from('exclusoes AS x')->where('x.base', $base)->whereColumn('x.chave', DB::raw("t.{$kc}::text")));
+        if (isset($cfg['geo'])) {
+            $g = $cfg['geo'][2];
+            $q->addSelect(DB::raw("ST_Y(t.{$g}) AS geo_lat"), DB::raw("ST_X(t.{$g}) AS geo_lng"));
+        }
+        $ordem = ! empty($cfg['serial']) ? 'id' : $kc;
+
+        // em fluxo: a VERA tem 140 mil+ linhas
+        return response()->stream(function () use ($q, $ordem, $base, $cfg) {
+            echo '[';
+            $primeiro = true;
+            foreach ($q->orderBy('t.'.$ordem)->lazy(5000) as $l) {
+                echo ($primeiro ? '' : ','), json_encode(self::paraFront($base, $cfg, $l), JSON_UNESCAPED_UNICODE);
+                $primeiro = false;
+            }
+            echo ']';
+        }, 200, ['Content-Type' => 'application/json; charset=utf-8', 'Cache-Control' => 'no-store']);
+    }
+
+    /** POST /cadastros/{base}/importar/iniciar -> {lote}. Mesma permissao do "Novo registro": importar + editar. */
+    public function importarIniciar(Request $r, string $base): JsonResponse
+    {
+        if ($x = $this->podeImportar($r, $base)) {
+            return $x;
+        }
+        DB::table('cadastro_import')->where('criado_em', '<', now()->subDay())->delete();
+
+        return response()->json(['lote' => (string) \Illuminate\Support\Str::uuid(), 'maxLinhas' => self::MAX_LINHAS_PARTE]);
+    }
+
+    /**
+     * POST /cadastros/{base}/importar/{lote}/parte  {inicio, registros:[{campo do front: valor}]}
+     * Confere linha a linha: as boas ficam guardadas, as ruins voltam na lista de erros (nao derrubam o arquivo).
+     */
+    public function importarParte(Request $r, string $base, string $lote): JsonResponse
+    {
+        if ($x = $this->podeImportar($r, $base)) {
+            return $x;
+        }
+        if (! preg_match('/^[0-9a-f\-]{36}$/', $lote)) {
+            return response()->json(['erro' => 'Lote inválido.'], 400);
+        }
+        $cfg = self::cfg($base);
+        $registros = $r->input('registros');
+        if (! is_array($registros) || count($registros) > self::MAX_LINHAS_PARTE) {
+            return response()->json(['erro' => 'Envie de 1 a '.self::MAX_LINHAS_PARTE.' linhas por pedaço.'], 400);
+        }
+        $inicio = max(0, (int) $r->input('inicio', 0));
+        $kf = $cfg['chave'];
+        $linhas = [];
+        $erros = [];
+        foreach (array_values($registros) as $i => $reg) {
+            $num = $inicio + $i + 1;
+            if (! is_array($reg)) {
+                $erros[] = ['linha' => $num, 'erro' => 'Linha vazia ou inválida.'];
+
+                continue;
+            }
+            $chave = mb_substr(trim((string) (is_array($reg[$kf] ?? null) ? '' : ($reg[$kf] ?? ''))), 0, 200);
+            if ($chave === '' && $base === 'prioridade_ew') {
+                $chave = implode('-', array_map(fn ($c) => trim((string) (is_scalar($reg[$c] ?? null) ? $reg[$c] : '')), ['tensao', 'prioridade', 'grupoRecurso', 'regional']));
+            }
+            if ($chave === '') {
+                $erros[] = ['linha' => $num, 'erro' => "Sem o campo-chave ({$kf})."];
+
+                continue;
+            }
+            [$d, $erro] = self::dadosDoCorpo($cfg, $reg);
+            if ($erro) {
+                $erros[] = ['linha' => $num, 'chave' => $chave, 'erro' => $erro];
+
+                continue;
+            }
+            $dados = $d['colunas'] + [self::col($cfg, $kf) => $chave];
+            if ($d['temGeo']) {
+                $dados[$cfg['geo'][2]] = ($d['lat'] !== null && $d['lng'] !== null) ? sprintf('SRID=4326;POINT(%.7F %.7F)', $d['lng'], $d['lat']) : null;
+            }
+            $linhas[] = ['lote' => $lote, 'base' => $base, 'usuario_id' => $r->user()->id, 'n' => $num,
+                'dados' => json_encode($dados, JSON_UNESCAPED_UNICODE)];
+        }
+        foreach (array_chunk($linhas, 1000) as $bloco) {
+            DB::table('cadastro_import')->upsert($bloco, ['lote', 'n'], ['dados']);
+        }
+
+        return response()->json(['aceitas' => count($linhas), 'erros' => $erros]);
+    }
+
+    /**
+     * POST /cadastros/{base}/importar/{lote}/aplicar  {modo: atualizar|substituir}
+     *  atualizar: chave que ja existe e atualizada (so as colunas que vieram no arquivo), chave nova entra.
+     *  substituir: a base fica igual ao arquivo (o que nao veio sai). Exclusoes (flag) continuam valendo.
+     * Tudo numa transacao; chave repetida no arquivo: vale a ultima linha.
+     */
+    public function importarAplicar(Request $r, string $base, string $lote): JsonResponse
+    {
+        if ($x = $this->podeImportar($r, $base)) {
+            return $x;
+        }
+        $cfg = self::cfg($base);
+        $modo = $r->input('modo') === 'substituir' ? 'substituir' : 'atualizar';
+        $eu = $r->user();
+        $q = fn () => DB::table('cadastro_import')->where('lote', $lote)->where('base', $base)->where('usuario_id', $eu->id);
+        $total = $q()->count();
+        if (! $total) {
+            return response()->json(['erro' => 'Nenhuma linha válida chegou para gravar.'], 400);
+        }
+        @set_time_limit(600);
+        $res = DB::transaction(fn () => isset($cfg['bruto'])
+            ? $this->aplicarBruto($cfg, $q, $modo)
+            : $this->aplicarTabela($base, $cfg, $lote, $modo));
+        $q()->delete();
+        self::aposMudar($base);
+        DB::table('importacoes_log')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'data_hora' => now(), 'usuario_id' => $eu->id,
+            'base' => "Gestão de Bases: {$base}", 'arquivo_origem' => mb_substr((string) $r->input('arquivo', ''), 0, 200) ?: null,
+            'registros_processados' => $res['novos'] + $res['atualizados'], 'registros_com_erro' => (int) $r->input('rejeitadas', 0)]);
+        Auditoria::registrar('importar', "cadastros/{$base}", null, $eu->id, $res + ['modo' => $modo, 'arquivo' => $r->input('arquivo')], $r->ip());
+
+        return response()->json($res + ['base' => $base, 'modo' => $modo]);
+    }
+
+    private function aplicarTabela(string $base, array $cfg, string $lote, string $modo): array
+    {
+        $t = $cfg['tabela'];
+        $kc = self::col($cfg, $cfg['chave']);
+        $permitidas = array_map(fn ($c) => $c[0], $cfg['campos']);
+        if (isset($cfg['geo'])) {
+            $permitidas[] = $cfg['geo'][2];
+        }
+        // colunas que vieram no arquivo (so as conhecidas: nada de nome de coluna vindo de fora)
+        $cols = array_values(array_intersect($permitidas, DB::table('cadastro_import')->where('lote', $lote)
+            ->selectRaw('DISTINCT jsonb_object_keys(dados) AS c')->pluck('c')->all()));
+        $outras = array_values(array_diff($cols, [$kc]));
+
+        DB::statement('DROP TABLE IF EXISTS imp');
+        DB::statement("CREATE TEMP TABLE imp ON COMMIT DROP AS SELECT DISTINCT ON (r.{$kc}) r.* FROM cadastro_import c, jsonb_populate_record(NULL::{$t}, c.dados) r
+            WHERE c.lote = ? ORDER BY r.{$kc}, c.n DESC", [$lote]);
+        $unicas = (int) DB::selectOne('SELECT count(*) AS n FROM imp')->n;
+
+        $removidos = 0;
+        if ($modo === 'substituir') {
+            $removidos = DB::delete("DELETE FROM {$t} t WHERE NOT EXISTS (SELECT 1 FROM imp i WHERE i.{$kc} = t.{$kc})");
+        }
+        $obrig = self::OBRIGATORIAS[$base] ?? [];
+        $atualizados = 0;
+        if ($outras) {
+            $set = implode(', ', array_map(fn ($c) => isset($obrig[$c]) ? "{$c} = COALESCE(i.{$c}, t.{$c})" : "{$c} = i.{$c}", $outras));
+            $atualizados = DB::update("UPDATE {$t} t SET {$set} FROM imp i WHERE t.{$kc} = i.{$kc}");
+        }
+        $insCols = array_values(array_unique(array_merge([$kc], $outras, array_keys($obrig))));
+        $insVals = array_map(fn ($c) => isset($obrig[$c]) ? (in_array($c, $outras, true) ? "COALESCE(i.{$c}, {$obrig[$c]})" : $obrig[$c]) : "i.{$c}", $insCols);
+        $novos = DB::affectingStatement('INSERT INTO '.$t.' ('.implode(', ', $insCols).') SELECT '.implode(', ', $insVals)
+            ." FROM imp i WHERE NOT EXISTS (SELECT 1 FROM {$t} t WHERE t.{$kc} = i.{$kc})");
+
+        // atualizados conta linhas da tabela; em base com chave repetida (protecao/conjuntos) pode passar das unicas
+        return ['novos' => $novos, 'atualizados' => min($atualizados, $unicas), 'removidos' => $removidos, 'repetidasNoArquivo' => $this->repetidas($lote, $unicas),
+            'colunas' => array_values(array_map(fn ($c) => self::campoDaColuna($cfg, $c), $cols))];
+    }
+
+    private function aplicarBruto(array $cfg, callable $q, string $modo): array
+    {
+        $kf = $cfg['chave'];
+        $novasPorChave = [];
+        foreach ($q()->orderBy('n')->pluck('dados') as $d) {
+            $d = json_decode($d, true);
+            $novasPorChave[(string) $d[$kf]] = $d;   // a ultima repetida vale
+        }
+        $atual = self::bruto($cfg['bruto'], true);
+        $saida = [];
+        $atualizados = 0;
+        $removidos = 0;
+        foreach ($atual as $reg) {
+            $k = (string) ($reg[$kf] ?? '');
+            if (isset($novasPorChave[$k])) {
+                $saida[] = array_merge($reg, $novasPorChave[$k]);
+                unset($novasPorChave[$k]);
+                $atualizados++;
+            } elseif ($modo === 'substituir') {
+                $removidos++;
+            } else {
+                $saida[] = $reg;
+            }
+        }
+        $novos = count($novasPorChave);
+        self::gravarBruto($cfg['bruto'], array_merge($saida, array_values($novasPorChave)));
+
+        return ['novos' => $novos, 'atualizados' => $atualizados, 'removidos' => $removidos, 'repetidasNoArquivo' => 0, 'colunas' => array_keys($cfg['campos'])];
+    }
+
+    private function repetidas(string $lote, int $unicas): int
+    {
+        return max(0, DB::table('cadastro_import')->where('lote', $lote)->count() - $unicas);
+    }
+
+    private static function campoDaColuna(array $cfg, string $coluna): string
+    {
+        foreach ($cfg['campos'] as $campo => [$c]) {
+            if ($c === $coluna) {
+                return $campo;
+            }
+        }
+
+        return isset($cfg['geo']) && $coluna === $cfg['geo'][2] ? $cfg['geo'][0].'/'.$cfg['geo'][1] : $coluna;
+    }
+
+    private function podeImportar(Request $r, string $base): ?JsonResponse
+    {
+        if (! $cfg = self::cfg($base)) {
+            return self::desconhecida($base);
+        }
+        if ($base === 'metas') {
+            return response()->json(['erro' => 'Metas são importadas pela Importação de Bases (planilha de Metas), que calcula a meta diária.'], 400);
+        }
+        if (! self::podeEscreverBase($r->user(), $cfg)) {
+            return response()->json(['erro' => "Sem permissão para importar {$base} (precisa poder importar e editar)."], 403);
+        }
+
+        return null;
+    }
+
     // ------------------------------------------------------------------ apoio
 
     private static function cfg(string $base): ?array
@@ -409,7 +655,10 @@ class CadastroController extends Controller
                 return [null, "Valor inválido em {$campo}."];
             }
             if ($tipo === 'bool') {
-                $v = filter_var($v, FILTER_VALIDATE_BOOLEAN);
+                $v = self::booleano($v);
+                if ($v === null) {
+                    continue; // vazio = nao informado (celula em branco nao desativa a equipe)
+                }
             } elseif ($tipo === 'int' || $tipo === 'num') {
                 $v = self::numero($v);
                 if ($v === false) {
@@ -449,6 +698,20 @@ class CadastroController extends Controller
         }
 
         return [['colunas' => $colunas, 'valores' => $valores] + $geo, null];
+    }
+
+    /** Sim/Nao, true/false, 1/0, x; vazio -> null. */
+    private static function booleano($v): ?bool
+    {
+        if (is_bool($v)) {
+            return $v;
+        }
+        if ($v === null || trim((string) $v) === '') {
+            return null;
+        }
+        $t = strtolower(trim(strtr((string) $v, ['ã' => 'a', 'Ã' => 'a'])));
+
+        return in_array($t, ['sim', 's', 'x', 'yes', 'y', 'true', '1', 'on', 'verdadeiro'], true);
     }
 
     /** null = vazio; false = invalido. Aceita virgula decimal. */

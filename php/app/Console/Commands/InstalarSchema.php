@@ -26,7 +26,9 @@ class InstalarSchema extends Command
                 ALTER TABLE programacoes ADD COLUMN IF NOT EXISTS exec_snap JSONB;
                 ALTER TABLE programacao_log ADD COLUMN IF NOT EXISTS os_add JSONB;
                 ALTER TABLE programacao_log ADD COLUMN IF NOT EXISTS os_rem JSONB;
-                ALTER TABLE metas ALTER COLUMN meta_mensal TYPE NUMERIC, ALTER COLUMN meta_diaria TYPE NUMERIC;");
+                ALTER TABLE metas ALTER COLUMN meta_mensal TYPE NUMERIC, ALTER COLUMN meta_diaria TYPE NUMERIC;
+                CREATE UNLOGGED TABLE IF NOT EXISTS cadastro_import (lote UUID NOT NULL, base TEXT NOT NULL, usuario_id TEXT NOT NULL, n INT NOT NULL,
+                    dados JSONB NOT NULL, criado_em TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (lote, n));");
             $this->info('Banco ja instalado; nada a fazer.');
 
             return self::SUCCESS;

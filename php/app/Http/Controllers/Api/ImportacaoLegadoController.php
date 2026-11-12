@@ -14,8 +14,8 @@ use Symfony\Component\Process\Process;
 
 /**
  * Gestao de Bases > "Importar sistema antigo" (SO ADMINISTRADOR).
- * Recebe os arquivos da pasta model/ do PowerShell (JSON/TSV) em pedacos e roda o
- * migracao/migrar.php, que SUBSTITUI todos os dados (numa transacao: se falhar, nada muda).
+ * Recebe os arquivos ESCOLHIDOS da pasta model/ do PowerShell (JSON/TSV) em pedacos e roda o
+ * migracao/migrar.php, que substitui SO as partes cujos arquivos vieram (numa transacao: se falhar, nada muda).
  *
  *   POST /api/importacao/legado/iniciar            -> { lote }
  *   POST /api/importacao/legado/{lote}/parte       multipart: nome, offset, parte (pedaco do arquivo)
@@ -82,10 +82,10 @@ class ImportacaoLegadoController extends Controller
             return response()->json(['erro' => 'Falta a confirmação (digite SUBSTITUIR).'], 400);
         }
         $pasta = self::pasta($lote);
-        if (! is_file($pasta.DIRECTORY_SEPARATOR.'usuarios.json')) {
-            return response()->json(['erro' => 'Não achei o usuarios.json. Selecione a pasta "model" do sistema antigo.'], 400);
-        }
         $arquivos = array_map('basename', glob($pasta.DIRECTORY_SEPARATOR.'*') ?: []);
+        if (! $arquivos) {
+            return response()->json(['erro' => 'Nenhum arquivo chegou. Escolha a pasta "model" e marque o que quer importar.'], 400);
+        }
 
         // guarda quem esta importando: se o e-mail dele nao vier nos dados antigos, ele e recolocado (nao fica trancado fora)
         $eu->refresh();

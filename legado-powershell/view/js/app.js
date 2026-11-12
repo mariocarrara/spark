@@ -9920,35 +9920,67 @@ async function excluirAlimentador(camada, chave){
 /* ---------------- v3.16.1 - Importar sistema antigo (so no Laravel, so admin) ----------------
    O admin escolhe a pasta "model" do SPARK antigo (PowerShell). O navegador manda cada .json/.tsv
    em pedacos de 8 MB (passa por qualquer limite de upload) e no fim pede pro servidor rodar o
-   migrar.php, que SUBSTITUI todos os dados numa transacao (se falhar, nada muda). */
+   migrar.php numa transacao (se falhar, nada muda).
+   v3.16.6 - POR PARTES: o admin marca o que quer trazer (ex.: so Programacoes); o servidor substitui
+   so as tabelas dos arquivos enviados e o resto do sistema novo fica como esta. */
 const LEGADO_PEDACO = 8 * 1024 * 1024;
-let legadoEstado = { arquivos: [], rodando: false, msg: "", log: "", erro: false };
+const LEGADO_GRUPOS = [
+  ["usuarios", "Usuários e permissões", /^(usuarios|permissoes|solicitacoes_cadastro)\.json$/],
+  ["programacao", "Programações (com o log)", /^programacao(\.json|_log\.jsonl)$/],
+  ["justificativas", "Justificativas e indisponibilidades", /^(justificativas|indisponibilidades)\.json$/],
+  ["metas", "Metas", /^metas\.json$/],
+  ["equipes", "Equipes", /^equipes\.json$/],
+  ["os", "OS (base atual)", /^manutencao_os\.json$/],
+  ["historico", "Histórico de podas (planos)", /^historico_podas_.*\.json$/],
+  ["ajustes", "Ajustes de OS", /^ajustes_os(\.json|_log\.jsonl)$/],
+  ["rede", "Vão, Proteção, VERA, Postes e Equipamentos", /^(protecao|protecao_alim|vao|vera)\.json$|\.tsv$/],
+  ["rank", "Rank de prioridade e Pontos Nix", /^(rank_listas|rank_itens_.*|nix|nix_meta)\.json$/],
+  ["cadastros", "Cadastros e configurações (esquemas, conjuntos, EW, feriados, listas, ajuda, exclusões, alertas...)", /^(esquemas|conjuntos|alimentador_polo|prioridade_ew|feriados|listas_cadastro|ajuda_faq|exclusoes|alertas_tratados|alertas_config|app_rl_config|prefeituras_config|importacoes_log)\.json$/],
+  ["outros", "Outros arquivos (guardados como vieram: logística, prefeituras, localidades, municípios...)", /./],
+];
+function legadoGrupoDe(nome){ const g = LEGADO_GRUPOS.find(([,,re])=>re.test(nome)); return g ? g[0] : "outros"; }
+let legadoEstado = { arquivos: [], desmarcados: new Set(), rodando: false, msg: "", log: "", erro: false };
+function legadoSelecionados(){ return legadoEstado.arquivos.filter(f=>!legadoEstado.desmarcados.has(legadoGrupoDe(f.name))); }
 function legadoHtml(){
   const e = legadoEstado;
-  const totalMb = e.arquivos.reduce((s,f)=>s+f.size,0) / 1048576;
-  const temUsuarios = e.arquivos.some(f=>f.name==="usuarios.json");
+  const sel = legadoSelecionados();
+  const totalMb = sel.reduce((s,f)=>s+f.size,0) / 1048576;
+  const grupos = LEGADO_GRUPOS.map(([k,rot])=>{
+    const fs = e.arquivos.filter(f=>legadoGrupoDe(f.name)===k);
+    if(!fs.length) return "";
+    const mb = fs.reduce((s,f)=>s+f.size,0)/1048576;
+    return `<label class="check-row" style="margin:0 0 6px; align-items:flex-start;"><input type="checkbox" ${e.desmarcados.has(k)?"":"checked"} ${e.rodando?"disabled":""} onchange="legadoMarcar('${k}', this.checked)">
+      <span><b>${escapeHtml(rot)}</b> <span style="color:var(--muted); font-size:12px;">— ${fs.length} arquivo(s), ${mb.toFixed(1)} MB: ${escapeHtml(fs.map(f=>f.name).slice(0,6).join(", "))}${fs.length>6?"…":""}</span></span></label>`;
+  }).join("");
+  const comUsuarios = sel.some(f=>f.name==="usuarios.json");
   return `
-  <div style="max-width:760px;">
+  <div style="max-width:820px;">
     <h3 style="margin:0 0 6px;">Importar dados do sistema antigo</h3>
-    <p style="color:var(--muted); font-size:13px; margin:0 0 12px;">Escolha a pasta <b>model</b> do SPARK antigo (a que fica ao lado do <code>iniciar.bat</code>).
-      Todos os dados do sistema novo serão <b>substituídos</b> pelos dessa pasta: usuários, equipes, OS, programações, metas, histórico etc.
-      É feito de uma vez só: se der erro no meio, nada é alterado.</p>
-    <div class="note" style="margin-bottom:12px;">${ic("info")}<div>Depois da importação, os usuários entram com o <b>e-mail e a senha que usavam no sistema antigo</b>.
-      Se o seu e-mail não estiver lá, sua conta atual é mantida.</div></div>
+    <p style="color:var(--muted); font-size:13px; margin:0 0 12px;">Escolha a pasta <b>model</b> do SPARK antigo (a que fica ao lado do <code>iniciar.bat</code>) e <b>marque só o que quer trazer</b>.
+      Cada parte marcada <b>substitui</b> a mesma parte do sistema novo; as partes desmarcadas ficam como estão.
+      Se der erro no meio, nada é alterado.</p>
     <div class="field" style="margin-bottom:12px;"><label>Pasta model</label>
       <input type="file" id="legadoPasta" webkitdirectory directory multiple onchange="legadoEscolheu(this.files)" ${e.rodando?"disabled":""}></div>
-    ${e.arquivos.length ? `<p style="font-size:13px; margin:0 0 12px;">${e.arquivos.length} arquivos .json/.jsonl/.tsv · ${totalMb.toFixed(1)} MB ${temUsuarios ? "" : `<b style="color:var(--bad-fg);">— não achei o usuarios.json: essa é mesmo a pasta model?</b>`}</p>` : ""}
+    ${e.arquivos.length ? `<div style="margin:0 0 12px; padding:10px 12px; border:1px solid var(--line,#ddd); border-radius:10px;">
+        <div style="display:flex; gap:8px; margin-bottom:8px;"><button class="btn btn-ghost btn-sm" onclick="legadoMarcarTodos(true)" ${e.rodando?"disabled":""}>Marcar tudo</button><button class="btn btn-ghost btn-sm" onclick="legadoMarcarTodos(false)" ${e.rodando?"disabled":""}>Desmarcar tudo</button></div>
+        ${grupos}
+        <p style="font-size:12.5px; margin:8px 0 0;">Vai enviar <b>${sel.length}</b> arquivo(s) · ${totalMb.toFixed(1)} MB</p></div>` : ""}
+    ${comUsuarios ? `<div class="note" style="margin-bottom:12px;">${ic("info")}<div>Com <b>Usuários</b> marcado, os usuários passam a entrar com o <b>e-mail e a senha do sistema antigo</b> (todos saem e entram de novo; a auditoria recomeça).
+      Se o seu e-mail não estiver lá, sua conta atual é mantida.</div></div>` : ""}
     <div class="field" style="margin-bottom:12px;"><label>Para confirmar, digite SUBSTITUIR</label>
       <input id="legadoConfirma" placeholder="SUBSTITUIR" style="max-width:220px;" ${e.rodando?"disabled":""}></div>
-    <button class="btn btn-primary" onclick="legadoImportar()" ${e.rodando || !temUsuarios ? "disabled" : ""}>${ic("check")} Importar e substituir tudo</button>
+    <button class="btn btn-primary" onclick="legadoImportar()" ${e.rodando || !sel.length ? "disabled" : ""}>${ic("check")} Importar as partes marcadas</button>
     ${e.msg ? `<div class="note" style="margin-top:14px; ${e.erro ? "background:var(--bad-bg); color:var(--bad-fg);" : (e.rodando ? "" : "background:var(--ok-bg); color:var(--ok-fg);")}">${ic(e.erro?"info":"check")}<div>${escapeHtml(e.msg)}</div></div>` : ""}
     ${e.log ? `<details style="margin-top:10px;" ${e.erro?"open":""}><summary style="cursor:pointer; font-size:12.5px;">Detalhes da importação</summary><pre style="font-size:11.5px; max-height:320px; overflow:auto; background:var(--panel-2,#f4f4f4); padding:10px; border-radius:8px;">${escapeHtml(e.log)}</pre></details>` : ""}
   </div>`;
 }
 function legadoRender(){ const w = document.getElementById("cadastroGridWrap"); if(w && cadastroBaseAtiva==="legado") w.innerHTML = cadastroGridHtml(); }
+function legadoMarcar(k, v){ if(v) legadoEstado.desmarcados.delete(k); else legadoEstado.desmarcados.add(k); legadoRender(); }
+function legadoMarcarTodos(v){ legadoEstado.desmarcados = v ? new Set() : new Set(LEGADO_GRUPOS.map(g=>g[0])); legadoRender(); }
 function legadoEscolheu(lista){
   // so os arquivos soltos da pasta (ignora subpastas como _locks) e so .json/.jsonl/.tsv
   legadoEstado.arquivos = [...(lista||[])].filter(f => /^[A-Za-z0-9_\-]{1,120}\.(json|jsonl|tsv)$/.test(f.name) && (f.webkitRelativePath||"").split("/").length <= 2);
+  legadoEstado.desmarcados = new Set();
   legadoEstado.msg = ""; legadoEstado.log = ""; legadoEstado.erro = false;
   legadoRender();
 }
@@ -9960,9 +9992,10 @@ async function legadoImportar(){
   let lote = null;
   try{
     lote = (await apiPost("/importacao/legado/iniciar", {})).lote;
-    const total = e.arquivos.reduce((s,f)=>s+f.size,0) || 1;
+    const enviar = legadoSelecionados();
+    const total = enviar.reduce((s,f)=>s+f.size,0) || 1;
     let enviado = 0;
-    for(const f of e.arquivos){
+    for(const f of enviar){
       for(let pos = 0; pos < f.size || (pos === 0 && f.size === 0); pos += LEGADO_PEDACO){
         const fd = new FormData();
         fd.append("nome", f.name); fd.append("offset", String(pos));
@@ -9979,7 +10012,8 @@ async function legadoImportar(){
     const r = await apiPost(`/importacao/legado/${lote}/executar`, { confirmacao: "SUBSTITUIR" }, 3600000);
     e.rodando = false;
     e.log = (r && r.log) || "";
-    e.msg = `Importação concluída (${r.arquivos} arquivos). Entre de novo ` + (r.adminRecolocado ? "com sua conta atual (seu e-mail não estava no sistema antigo)." : "com seu e-mail e a senha do sistema antigo.") + " Recarregando…";
+    const trocouUsuarios = enviar.some(f=>f.name==="usuarios.json");
+    e.msg = `Importação concluída (${r.arquivos} arquivos). ` + (!trocouUsuarios ? "Recarregando…" : "Entre de novo " + (r.adminRecolocado ? "com sua conta atual (seu e-mail não estava no sistema antigo)." : "com seu e-mail e a senha do sistema antigo.") + " Recarregando…");
     legadoRender();
     setTimeout(()=>location.reload(), 4000);
   }catch(err){
@@ -10804,14 +10838,182 @@ function podeEscreverBase(chaveBase){
 }
 function cadastroAcoesHtml(){
   const cfg = CADASTROS_BASES[cadastroBaseAtiva];
-  if(!podeEscreverBase() || cfg.especial === "ajuda") return "";
+  const io = cadastroIoAtivo() && !cadastroVerExcluidos;
+  const exportar = io ? `
+    <button class="btn btn-ghost btn-sm" onclick="exportarBaseCadastro('xlsx')" title="Baixa a base inteira em Excel (sem os registros excluídos)">${ic("download")} Exportar Excel</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportarBaseCadastro('json')" title="Baixa a base inteira em JSON (sem os registros excluídos)">${ic("download")} Exportar JSON</button>` : "";
+  if(!podeEscreverBase() || cfg.especial === "ajuda"){
+    return exportar ? `<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">${exportar}</div>` : "";
+  }
   const grid = !cfg.especial;
   const novo = grid && !cadastroVerExcluidos
     ? `<button class="btn btn-primary btn-sm" onclick="abrirNovoRegistroCadastro()">${ic("plus")} Novo registro</button>` : "";
-  return `<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px;">
+  const importar = io && cfg.especial !== "metas"
+    ? `<button class="btn btn-ghost btn-sm" onclick="abrirImportarBaseCadastro()" title="Sobe um Excel ou JSON com as mesmas colunas da exportação">${ic("upload") || "⬆"} Importar Excel/JSON</button>` : "";
+  return `<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+    ${exportar}${importar}
     ${novo}
     <button class="btn btn-danger btn-sm" onclick="pedirApagarTudoBase()">${ic("close")} Apagar tudo</button>
   </div>`;
+}
+
+/* ---------------- v3.16.6 - Exportar / Importar por aba (so no sistema novo) ----------------
+   Exportar: a base inteira, em Excel (cabeçalho = nomes da tela) ou JSON (nomes dos campos).
+   Importar: Excel ou JSON com as mesmas colunas (aceita o nome da tela ou o do campo, sem ligar
+   pra acento/maiúscula; os .json da pasta model do sistema antigo também servem).
+   Linha com problema NAO derruba o arquivo: ela volta numa lista e o resto é gravado.
+   Modos: "atualizar" (chave existente é atualizada só nas colunas que vieram; chave nova entra)
+   ou "substituir" (a base fica igual ao arquivo). O servidor grava tudo de uma vez no fim. */
+const CADASTRO_IO_BASES = ["equipes","vao","protecao","vera","esquemas","municipios","conjuntos","ew","metas"];
+const CADASTRO_IO_PEDACO = 5000;
+const METAS_IO_CAMPOS = [["id","ID"],["equipeId","Equipe"],["tipo","Tipo"],["anoMes","Mês (AAAA-MM)"],["metaMensal","Meta mensal"],["diasUteis","Dias úteis"],["metaDiaria","Meta diária"],["origem","Origem"],["atualizadoPor","Atualizado por"],["atualizadoEm","Atualizado em"]];
+function cadastroIoAtivo(){ return API_ONLINE && typeof API_BACKEND!=="undefined" && API_BACKEND==="laravel" && CADASTRO_IO_BASES.includes(cadastroBaseAtiva); }
+function cadastroApiBaseAtiva(){ const cfg = CADASTROS_BASES[cadastroBaseAtiva]; return cfg.apiBase || cadastroBaseAtiva; }
+/* [[campo, rótulo]] na ordem: chave, colunas da grade, demais campos editáveis */
+function cadastroCamposIo(){
+  const cfg = CADASTROS_BASES[cadastroBaseAtiva];
+  if(cfg.especial==="metas") return METAS_IO_CAMPOS;
+  const lista = [], vistos = new Set(), rotulos = new Set();
+  const por = (campo, rotulo, cortaExplicacao) => {
+    if(vistos.has(campo)) return;
+    let r = String(rotulo||campo).trim();
+    if(cortaExplicacao) r = r.replace(/\s*\(.*\)\s*$/,"").trim();   // rótulo do formulário: "Descrição (igual ao...)" -> "Descrição"
+    r = r || campo;
+    if(rotulos.has(r)) r = `${r} [${campo}]`;
+    vistos.add(campo); rotulos.add(r); lista.push([campo, r]);
+  };
+  por(cfg.keyField, (cfg.colunas.find(c=>c[0]===cfg.keyField)||[])[1] || (cfg.keyField.charAt(0).toUpperCase() + cfg.keyField.slice(1)));
+  cfg.colunas.forEach(([c,r])=>por(c,r));
+  cfg.campos.forEach(c=>por(c.nome, c.rotulo, true));
+  return lista;
+}
+function normCabecalho(t){ return String(t==null?"":t).normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().replace(/[^a-z0-9]/g,""); }
+function cadastroBaixar(blob, nome){
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nome;
+  document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+async function exportarBaseCadastro(formato){
+  const cfg = CADASTROS_BASES[cadastroBaseAtiva];
+  if(formato==="xlsx" && typeof XLSX==="undefined"){ toast("Biblioteca de planilha (XLSX) não carregada."); return; }
+  toast(`Preparando a exportação de ${cfg.label}…`);
+  try{
+    const lista = await apiGet(`/cadastros/${cadastroApiBaseAtiva()}/exportar`, 300000);
+    const nome = `SPARK_${String(cfg.label).replace(/[^A-Za-z0-9]+/g,"_").replace(/^_|_$/g,"")}_${new Date().toISOString().slice(0,10)}`;
+    if(formato==="json"){
+      cadastroBaixar(new Blob([JSON.stringify(lista)], { type:"application/json" }), nome + ".json");
+    } else {
+      const campos = cadastroCamposIo();
+      const linhas = lista.map(r=>{ const o = {}; campos.forEach(([c,rot])=>{ o[rot] = r[c]===undefined ? null : r[c]; }); return o; });
+      const ws = XLSX.utils.json_to_sheet(linhas, { header: campos.map(c=>c[1]) });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, String(cfg.label).slice(0,31).replace(/[\\\/?*\[\]:]/g," "));
+      XLSX.writeFile(wb, nome + ".xlsx");
+    }
+    toast(`${lista.length.toLocaleString("pt-BR")} registro(s) exportado(s).`);
+  }catch(err){ toast(`Erro ao exportar: ${err.message}`); }
+}
+
+let cadastroImport = null;   // { arquivo, registros, reconhecidas, ignoradas }
+function abrirImportarBaseCadastro(){
+  const cfg = CADASTROS_BASES[cadastroBaseAtiva];
+  cadastroImport = null;
+  openModal(`
+    <h2>Importar — ${escapeHtml(cfg.label)}</h2>
+    <p class="modal-sub">Excel (.xlsx) ou JSON com as mesmas colunas da exportação (dica: exporte primeiro, edite e suba de volta).
+      Linhas com problema não travam o arquivo: elas voltam numa lista e o resto é gravado.</p>
+    <div class="field" style="margin-bottom:12px;"><label>Arquivo</label>
+      <input type="file" id="cadImpArquivo" accept=".xlsx,.xls,.csv,.json" onchange="lerArquivoImportarCadastro(this.files[0])"></div>
+    <div class="field" style="margin-bottom:6px;"><label>Como gravar</label>
+      <label class="check-row" style="margin:0 0 4px;"><input type="radio" name="cadImpModo" value="atualizar" checked> <span><b>Atualizar e acrescentar</b> — quem já existe é atualizado só nas colunas que vieram; quem é novo entra; o resto fica.</span></label>
+      <label class="check-row" style="margin:0;"><input type="radio" name="cadImpModo" value="substituir"> <span><b>Substituir</b> — a base fica igual ao arquivo (o que não estiver nele sai).</span></label>
+    </div>
+    <div id="cadImpResumo" style="margin-top:10px;"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">Fechar</button>
+      <button class="btn btn-primary" id="cadImpBtn" disabled onclick="executarImportarCadastro()">${ic("check")} Importar</button>
+    </div>`);
+}
+async function lerArquivoImportarCadastro(arquivo){
+  const resumo = document.getElementById("cadImpResumo");
+  const btn = document.getElementById("cadImpBtn");
+  cadastroImport = null; if(btn) btn.disabled = true;
+  if(!arquivo) return;
+  resumo.innerHTML = barraIndeterminadaHtml("Lendo o arquivo…");
+  try{
+    let brutos;
+    if(/\.json$/i.test(arquivo.name)){
+      let txt = await arquivo.text();
+      if(txt.charCodeAt(0)===0xFEFF) txt = txt.slice(1);
+      const j = JSON.parse(txt);
+      brutos = Array.isArray(j) ? j : (Array.isArray(j.registros) ? j.registros : null);
+      if(!brutos) throw new Error("o JSON precisa ser uma lista de registros");
+    } else {
+      if(typeof XLSX==="undefined") throw new Error("biblioteca de planilha (XLSX) não carregada");
+      const wb = XLSX.read(await arquivo.arrayBuffer(), { type:"array" });
+      brutos = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:null, raw:true });
+    }
+    const mapa = {};
+    cadastroCamposIo().forEach(([c,r])=>{ mapa[normCabecalho(c)] = c; mapa[normCabecalho(r)] = c; });
+    const reconhecidas = new Set(), ignoradas = new Set();
+    const registros = brutos.map(b=>{
+      const o = {};
+      if(!b || typeof b!=="object") return o;
+      Object.keys(b).forEach(k=>{
+        const c = mapa[normCabecalho(k)];
+        if(!c){ ignoradas.add(k); return; }
+        reconhecidas.add(c);
+        const v = b[k];
+        o[c] = (v instanceof Date) ? v.toISOString().slice(0,10) : v;
+      });
+      return o;
+    });
+    const cfg = CADASTROS_BASES[cadastroBaseAtiva];
+    if(!reconhecidas.has(cfg.keyField) && cadastroBaseAtiva!=="ew") throw new Error(`não achei a coluna-chave (${cadastroCamposIo()[0][1]})`);
+    cadastroImport = { arquivo: arquivo.name, registros };
+    resumo.innerHTML = `<div class="note">${ic("info")}<div><b>${registros.length.toLocaleString("pt-BR")}</b> linha(s).
+      Colunas usadas: ${escapeHtml(cadastroCamposIo().filter(([c])=>reconhecidas.has(c)).map(c=>c[1]).join(", "))}.
+      ${ignoradas.size ? `<br>Ignoradas (não são desta base): ${escapeHtml([...ignoradas].slice(0,12).join(", "))}${ignoradas.size>12?"…":""}.` : ""}
+      <br>Colunas que não vieram no arquivo ficam como estão.</div></div>`;
+    if(btn) btn.disabled = !registros.length;
+  }catch(err){
+    resumo.innerHTML = `<div class="login-error">${ic("info")}<div>Não consegui ler o arquivo: ${escapeHtml(err.message)}</div></div>`;
+  }
+}
+async function executarImportarCadastro(){
+  if(!cadastroImport) return;
+  const modo = (document.querySelector('input[name="cadImpModo"]:checked')||{}).value || "atualizar";
+  if(modo==="substituir" && !window.confirm("Substituir: o que não estiver no arquivo sai da base. Continuar?")) return;
+  const resumo = document.getElementById("cadImpResumo");
+  const btn = document.getElementById("cadImpBtn"); if(btn) btn.disabled = true;
+  const base = cadastroApiBaseAtiva();
+  const regs = cadastroImport.registros;
+  const erros = [];
+  try{
+    const { lote } = await apiPost(`/cadastros/${base}/importar/iniciar`, {});
+    for(let i = 0; i < regs.length; i += CADASTRO_IO_PEDACO){
+      resumo.innerHTML = barraIndeterminadaHtml(`Conferindo linhas… ${Math.min(i+CADASTRO_IO_PEDACO, regs.length).toLocaleString("pt-BR")} de ${regs.length.toLocaleString("pt-BR")}`);
+      const r = await apiPost(`/cadastros/${base}/importar/${lote}/parte`, { inicio:i, registros: regs.slice(i, i+CADASTRO_IO_PEDACO) }, 300000);
+      erros.push(...(r.erros||[]));
+    }
+    resumo.innerHTML = barraIndeterminadaHtml("Gravando na base…");
+    const fim = await apiPost(`/cadastros/${base}/importar/${lote}/aplicar`, { modo, arquivo: cadastroImport.arquivo, rejeitadas: erros.length }, 900000);
+    const n = v => Number(v||0).toLocaleString("pt-BR");
+    resumo.innerHTML = `<div class="note" style="background:var(--ok-bg); color:var(--ok-fg);">${ic("check")}<div>
+        Importado: <b>${n(fim.novos)}</b> novo(s), <b>${n(fim.atualizados)}</b> atualizado(s)${modo==="substituir" ? `, <b>${n(fim.removidos)}</b> removido(s)` : ""}.
+        ${fim.repetidasNoArquivo ? `<br>${n(fim.repetidasNoArquivo)} chave(s) repetida(s) no arquivo: valeu a última linha.` : ""}
+        ${erros.length ? `<br><b>${n(erros.length)}</b> linha(s) não entraram (lista abaixo).` : ""}</div></div>
+      ${erros.length ? `<div class="table-wrap" style="max-height:30vh; overflow:auto; margin-top:8px;"><table><thead><tr><th>Linha</th><th>Chave</th><th>Problema</th></tr></thead><tbody>
+        ${erros.slice(0,300).map(e=>`<tr><td class="num">${e.linha + (/\.json$/i.test(cadastroImport.arquivo) ? 0 : 1)}</td><td>${escapeHtml(e.chave||"")}</td><td>${escapeHtml(e.erro)}</td></tr>`).join("")}
+      </tbody></table></div>${erros.length>300 ? `<p style="font-size:12px;">Mostrando 300 de ${n(erros.length)}.</p>` : ""}` : ""}`;
+    if(cadastroBaseAtiva==="equipes"){ try{ await loadStateFromApi(); }catch(e){} equipesSemCadastro = null; }
+    if(cadastroBaseAtiva==="conjuntos") await recarregarConjuntos();
+    cadastroPagina = 1;
+    await carregarCadastroPagina();
+  }catch(err){
+    let t = err.message; const m = t.match(/\(([^)]+)\)\s*$/); if(m) t = m[1];
+    resumo.innerHTML = `<div class="login-error">${ic("info")}<div>A importação não foi gravada: ${escapeHtml(t)}</div></div>`;
+    if(btn) btn.disabled = false;
+  }
 }
 function abrirNovoRegistroCadastro(){
   const cfg = CADASTROS_BASES[cadastroBaseAtiva];
