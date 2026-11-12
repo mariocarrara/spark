@@ -10839,9 +10839,7 @@ function podeEscreverBase(chaveBase){
 function cadastroAcoesHtml(){
   const cfg = CADASTROS_BASES[cadastroBaseAtiva];
   const io = cadastroIoAtivo() && !cadastroVerExcluidos;
-  const exportar = io ? `
-    <button class="btn btn-ghost btn-sm" onclick="exportarBaseCadastro('xlsx')" title="Baixa a base inteira em Excel (sem os registros excluídos)">${ic("download")} Exportar Excel</button>
-    <button class="btn btn-ghost btn-sm" onclick="exportarBaseCadastro('json')" title="Baixa a base inteira em JSON (sem os registros excluídos)">${ic("download")} Exportar JSON</button>` : "";
+  const exportar = io ? exportarSplitHtml() : "";
   if(!podeEscreverBase() || cfg.especial === "ajuda"){
     return exportar ? `<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">${exportar}</div>` : "";
   }
@@ -10849,7 +10847,7 @@ function cadastroAcoesHtml(){
   const novo = grid && !cadastroVerExcluidos
     ? `<button class="btn btn-primary btn-sm" onclick="abrirNovoRegistroCadastro()">${ic("plus")} Novo registro</button>` : "";
   const importar = io && cfg.especial !== "metas"
-    ? `<button class="btn btn-ghost btn-sm" onclick="abrirImportarBaseCadastro()" title="Sobe um Excel ou JSON com as mesmas colunas da exportação">${ic("upload") || "⬆"} Importar Excel/JSON</button>` : "";
+    ? `<button class="btn btn-import btn-sm" onclick="abrirImportarBaseCadastro()" title="Sobe um Excel ou JSON com as mesmas colunas da exportação">${ic("upload")} Importar</button>` : "";
   return `<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
     ${exportar}${importar}
     ${novo}
@@ -10867,6 +10865,32 @@ function cadastroAcoesHtml(){
 const CADASTRO_IO_BASES = ["equipes","vao","protecao","vera","esquemas","municipios","conjuntos","ew","metas"];
 const CADASTRO_IO_PEDACO = 5000;
 const METAS_IO_CAMPOS = [["id","ID"],["equipeId","Equipe"],["tipo","Tipo"],["anoMes","Mês (AAAA-MM)"],["metaMensal","Meta mensal"],["diasUteis","Dias úteis"],["metaDiaria","Meta diária"],["origem","Origem"],["atualizadoPor","Atualizado por"],["atualizadoEm","Atualizado em"]];
+/* Botão "Exportar" com setinha: o formato escolhido (Excel/JSON) fica lembrado neste navegador */
+let cadastroExportFormato = (()=>{ try{ return localStorage.getItem("spark.exportFormato")==="json" ? "json" : "xlsx"; }catch(e){ return "xlsx"; } })();
+function exportarSplitHtml(){
+  const rot = cadastroExportFormato==="json" ? "JSON" : "Excel";
+  const op = (f, nome) => `<button type="button" class="${cadastroExportFormato===f?"ativo":""}" onclick="escolherFormatoExport('${f}')">${ic("download")} ${nome}</button>`;
+  return `<div class="btn-split" id="exportSplit">
+    <button class="btn btn-export btn-sm" onclick="exportarBaseCadastro(cadastroExportFormato)" title="Baixa a base inteira (sem os registros excluídos)">${ic("download")} Exportar ${rot}</button>
+    <button class="btn btn-export btn-sm btn-split-seta" type="button" onclick="alternarMenuExport(event)" title="Escolher Excel ou JSON" aria-haspopup="menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg></button>
+    <div class="btn-split-menu" role="menu">${op("xlsx","Excel (.xlsx)")}${op("json","JSON (.json)")}</div>
+  </div>`;
+}
+function alternarMenuExport(ev){
+  ev.stopPropagation();
+  const el = document.getElementById("exportSplit"); if(!el) return;
+  const abrir = !el.classList.contains("aberto");
+  el.classList.toggle("aberto", abrir);
+  if(abrir) setTimeout(()=>document.addEventListener("click", fecharMenuExport, { once:true }), 0);
+}
+function fecharMenuExport(){ const el = document.getElementById("exportSplit"); if(el) el.classList.remove("aberto"); }
+function escolherFormatoExport(f){
+  cadastroExportFormato = f;
+  try{ localStorage.setItem("spark.exportFormato", f); }catch(e){}
+  const el = document.getElementById("exportSplit");
+  if(el) el.outerHTML = exportarSplitHtml();
+  exportarBaseCadastro(f);
+}
 function cadastroIoAtivo(){ return API_ONLINE && typeof API_BACKEND!=="undefined" && API_BACKEND==="laravel" && CADASTRO_IO_BASES.includes(cadastroBaseAtiva); }
 function cadastroApiBaseAtiva(){ const cfg = CADASTROS_BASES[cadastroBaseAtiva]; return cfg.apiBase || cadastroBaseAtiva; }
 /* [[campo, rótulo]] na ordem: chave, colunas da grade, demais campos editáveis */

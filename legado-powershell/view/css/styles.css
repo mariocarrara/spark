@@ -1291,3 +1291,19 @@ td.os-texto{ max-width:340px; white-space:nowrap; overflow:hidden; text-overflow
   .coord-multi{ left:10px; right:10px; width:auto; top:60px; }
 }
 @media (max-width:760px){ html[data-tema="dark"] .mapa-barra > div{ background:var(--surface); } }
+
+/* v3.16.6 - Gestao de Bases: Exportar (verde, com setinha para escolher Excel/JSON) e Importar (azul) */
+.btn-export{ background:var(--ok-bg); color:var(--ok-fg); }
+.btn-export:hover{ filter:brightness(.96); }
+.btn-import{ background:var(--info-bg); color:var(--info-fg); }
+.btn-import:hover{ filter:brightness(.96); }
+.btn-split{ position:relative; display:inline-flex; }
+.btn-split > .btn:first-child{ border-top-right-radius:0; border-bottom-right-radius:0; }
+.btn-split > .btn-split-seta{ border-top-left-radius:0; border-bottom-left-radius:0; padding-left:7px; padding-right:7px; border-left:1px solid color-mix(in srgb, currentColor 25%, transparent); }
+.btn-split-seta svg{ width:12px; height:12px; transition:transform .15s ease; }
+.btn-split.aberto .btn-split-seta svg{ transform:rotate(180deg); }
+.btn-split-menu{ display:none; position:absolute; top:calc(100% + 4px); left:0; min-width:100%; z-index:50; background:var(--surface); border:1px solid var(--border-hi); border-radius:8px; box-shadow:0 8px 24px -8px rgba(0,0,0,.35); padding:4px; }
+.btn-split.aberto .btn-split-menu{ display:block; }
+.btn-split-menu button{ display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:0; border-radius:6px; background:none; color:var(--text); font-size:12px; text-align:left; cursor:pointer; white-space:nowrap; }
+.btn-split-menu button:hover{ background:var(--surface-2); }
+.btn-split-menu button.ativo{ color:var(--ok-fg); font-weight:600; }
