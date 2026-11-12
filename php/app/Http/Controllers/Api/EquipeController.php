@@ -24,7 +24,11 @@ class EquipeController extends Controller
 
     public function index(): JsonResponse
     {
-        return response()->json(self::consulta()->orderBy('id')->get()->map(fn ($e) => self::paraFront($e))->values());
+        // excluidas na Gestao de Bases (flag em "exclusoes") somem, como no legado
+        $excl = DB::table('exclusoes')->where('base', 'equipes')->pluck('chave')->flip();
+
+        return response()->json(self::consulta()->orderBy('id')->get()->reject(fn ($e) => isset($excl[$e->id]))
+            ->map(fn ($e) => self::paraFront($e))->values());
     }
 
     public function store(Request $request): JsonResponse
@@ -132,7 +136,7 @@ class EquipeController extends Controller
         return (bool) preg_match('/PL\d+$/i', (string) $id);
     }
 
-    private static function consulta()
+    public static function consulta()
     {
         return DB::table('equipes')->select('*', DB::raw('ST_Y(base) AS base_lat'), DB::raw('ST_X(base) AS base_lng'));
     }
@@ -169,7 +173,7 @@ class EquipeController extends Controller
         }
     }
 
-    private static function paraFront(object $e): array
+    public static function paraFront(object $e): array
     {
         return [
             'id' => $e->id, 'nome' => $e->nome, 'tipoEquipe' => $e->tipo_equipe, 'polo' => $e->polo,

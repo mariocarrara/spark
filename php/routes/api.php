@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CadastroController;
 use App\Http\Controllers\Api\CamadasController;
 use App\Http\Controllers\Api\EquipeController;
 use App\Http\Controllers\Api\FeriadoController;
@@ -86,6 +87,14 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/equip/cadastro', [CamadasController::class, 'equipCadastro']);
     Route::get('/manutencao/localidades-mapa', [ManutencaoController::class, 'localidadesMapa']);
     Route::get('/cadastros/conjuntos/mapa', [ManutencaoController::class, 'conjuntosMapa']);
+
+    // Gestao de Bases: listagem paginada, novo, editar, excluir (flag), restaurar, apagar tudo
+    Route::get('/cadastros/{base}', [CadastroController::class, 'index']);
+    Route::post('/cadastros/{base}', [CadastroController::class, 'store']);
+    Route::delete('/cadastros/{base}', [CadastroController::class, 'destroyTodos']);
+    Route::post('/cadastros/{base}/{chave}/restaurar', [CadastroController::class, 'restaurar'])->where('chave', '.+');
+    Route::put('/cadastros/{base}/{chave}', [CadastroController::class, 'update'])->where('chave', '.+');
+    Route::delete('/cadastros/{base}/{chave}', [CadastroController::class, 'destroy'])->where('chave', '.+');
     Route::get('/ajustes', [AjusteController::class, 'index']);
     // o numero da OS tem "/" (ex.: AUDTUP1  000304/2026): {osId} aceita barra
     Route::put('/ajustes/{osId}', [AjusteController::class, 'salvar'])->where('osId', '.+');

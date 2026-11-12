@@ -102,7 +102,7 @@ class MetaController extends Controller
         return (bool) preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $t);
     }
 
-    private static function paraFront(object $m): array
+    public static function paraFront(object $m): array
     {
         $n = fn ($v) => $v === null ? null : (fmod((float) $v, 1.0) == 0.0 ? (int) $v : (float) $v);
 
