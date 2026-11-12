@@ -10114,6 +10114,94 @@ async function executarImportarRegistros(base){
     if(btn) btn.disabled = false;
   }
 }
+/* ---------------- v3.17.2 - Histórico de podas na Gestão de Bases: exportar/importar por plano ----------------
+   Exportar: o plano inteiro no formato das OS (o mesmo historico_podas_<plano>.json do sistema antigo) ou em Excel (CSV da consulta).
+   Importar: o historico_podas_<plano>.json do sistema antigo ou o exportado daqui (o plano sai do nome do arquivo).
+   A carga normal continua sendo pelas grids (Importação de Bases > Podas — Histórico). */
+let histGestPlanos = null;
+async function histGestCarregar(){
+  try{ histGestPlanos = await apiGet("/historico/planos", 30000) || []; }catch(e){ histGestPlanos = []; }
+  const w = document.getElementById("cadastroGridWrap"); if(w && cadastroBaseAtiva==="historicoBase") w.innerHTML = cadastroGridHtml();
+}
+function histGestHtml(){
+  if(!registrosIoLiberado()) return `<div class="note">${ic("info")}<div>Disponível só no sistema novo.</div></div>`;
+  if(histGestPlanos===null){ histGestCarregar(); return barraIndeterminadaHtml("Carregando os planos…"); }
+  const podeImp = minhaPermissao("manutencao","importar") && minhaPermissao("manutencao","editar");
+  const n = v => Number(v||0).toLocaleString("pt-BR");
+  return `<div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:10px;">
+      ${podeImp ? `<button class="btn btn-import btn-sm" onclick="abrirImportarHistorico()">${ic("upload")} Importar plano (JSON)</button>` : ""}</div>
+    ${histGestPlanos.length ? `<div class="table-wrap"><table><thead><tr><th>Plano</th><th>Período</th><th class="num">OS</th><th>Atualizado</th><th>Arquivos</th><th></th></tr></thead><tbody>
+      ${histGestPlanos.map(p=>`<tr><td><b>${p.plano}</b></td><td>${escapeHtml(p.inicio)} a ${escapeHtml(p.fim)}</td><td class="num">${n(p.total)}</td>
+        <td>${p.atualizadoEm ? escapeHtml(new Date(p.atualizadoEm).toLocaleString("pt-BR")) : "—"}</td><td style="font-size:12px; color:var(--muted);">${escapeHtml(p.arquivos||"")}</td>
+        <td style="white-space:nowrap;"><button class="btn btn-export btn-sm" onclick="exportarHistoricoPlano(${p.plano},'json')">${ic("download")} JSON</button>
+          <button class="btn btn-export btn-sm" onclick="exportarHistoricoPlano(${p.plano},'csv')">${ic("download")} Excel (CSV)</button></td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty">${ic("empty")}<div>Nenhum plano no histórico ainda.</div></div>`}
+    <p style="color:var(--muted); font-size:12px; margin-top:10px;">Plano N = 01/11/(N-1) a 31/10/N. Para apagar um plano, use a tela Histórico de Podas.</p>`;
+}
+async function exportarHistoricoPlano(plano, formato){
+  toast(`Preparando o plano ${plano}…`);
+  try{
+    if(formato==="csv"){
+      const txt = await apiGetTexto(`/historico/exportar?plano=${plano}`, 600000);
+      cadastroBaixar(new Blob([txt], { type:"text/csv;charset=utf-8" }), `SPARK_historico_${plano}.csv`);
+    } else {
+      const txt = await apiGetTexto(`/historico/mapa?plano=${plano}`, 600000);
+      cadastroBaixar(new Blob([txt], { type:"application/json" }), `historico_podas_${plano}.json`);
+    }
+    toast(`Plano ${plano} exportado.`);
+  }catch(err){ toast(`Erro ao exportar: ${err.message}`); }
+}
+let histImport = null;
+function abrirImportarHistorico(){
+  histImport = null;
+  openModal(`
+    <h2>Importar plano do histórico</h2>
+    <p class="modal-sub">O <code>historico_podas_&lt;plano&gt;.json</code> da pasta model do sistema antigo, ou o JSON exportado daqui. As OS do plano no sistema novo são trocadas pelas do arquivo.</p>
+    <div class="field" style="margin-bottom:12px;"><label>Arquivo</label><input type="file" accept=".json" onchange="lerArquivoHistorico(this.files[0])"></div>
+    <div class="field" style="margin-bottom:6px;"><label>Plano</label><input id="histImpPlano" type="number" min="2000" max="2100" placeholder="ex.: 2025" style="max-width:140px;"></div>
+    <div class="field" style="margin-bottom:6px;"><label>Como gravar</label>
+      <label class="check-row" style="margin:0 0 4px;"><input type="radio" name="histImpModo" value="substituir" checked> <span><b>Substituir o plano</b> — fica só o que está no arquivo.</span></label>
+      <label class="check-row" style="margin:0;"><input type="radio" name="histImpModo" value="acrescentar"> <span><b>Acrescentar</b> — junta com o que já está (mesma OS: vale a do arquivo).</span></label></div>
+    <div id="histImpResumo" style="margin-top:10px;"></div>
+    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">Fechar</button>
+      <button class="btn btn-primary" id="histImpBtn" disabled onclick="executarImportarHistorico()">${ic("check")} Importar</button></div>`);
+}
+async function lerArquivoHistorico(arquivo){
+  const resumo = document.getElementById("histImpResumo"), btn = document.getElementById("histImpBtn");
+  histImport = null; if(btn) btn.disabled = true; if(!arquivo) return;
+  resumo.innerHTML = barraIndeterminadaHtml("Lendo o arquivo…");
+  try{
+    let t = await arquivo.text(); if(t.charCodeAt(0)===0xFEFF) t = t.slice(1);
+    const os = JSON.parse(t);
+    if(!Array.isArray(os) || !os.length || !os[0] || typeof os[0]!=="object" || !("id" in os[0])) throw new Error("o arquivo precisa ser uma lista de OS (com \"id\")");
+    histImport = { arquivo: arquivo.name, os };
+    const m = arquivo.name.match(/(20\d\d)/); const inp = document.getElementById("histImpPlano");
+    if(m && inp && !inp.value) inp.value = m[1];
+    resumo.innerHTML = `<div class="note">${ic("info")}<div><b>${os.length.toLocaleString("pt-BR")}</b> OS em ${escapeHtml(arquivo.name)}.</div></div>`;
+    if(btn) btn.disabled = false;
+  }catch(err){ resumo.innerHTML = `<div class="login-error">${ic("info")}<div>Não consegui ler o arquivo: ${escapeHtml(err.message)}</div></div>`; }
+}
+async function executarImportarHistorico(){
+  if(!histImport) return;
+  const plano = parseInt((document.getElementById("histImpPlano")||{}).value, 10);
+  if(!(plano>=2000 && plano<=2100)){ toast("Informe o plano (ex.: 2025)."); return; }
+  let modo = (document.querySelector('input[name="histImpModo"]:checked')||{}).value || "substituir";
+  if(modo==="substituir" && (histGestPlanos||[]).some(p=>p.plano===plano) && !window.confirm(`O plano ${plano} já existe e será trocado pelo arquivo. Continuar?`)) return;
+  const resumo = document.getElementById("histImpResumo"), btn = document.getElementById("histImpBtn"); if(btn) btn.disabled = true;
+  const PEDACO = 10000; let r = null;
+  try{
+    for(let i = 0; i < histImport.os.length; i += PEDACO){
+      resumo.innerHTML = barraIndeterminadaHtml(`Gravando… ${Math.min(i+PEDACO, histImport.os.length).toLocaleString("pt-BR")} de ${histImport.os.length.toLocaleString("pt-BR")} OS`);
+      r = await apiPost(`/historico/planos/${plano}/importar`, { modo: i===0 ? modo : "acrescentar", arquivo: histImport.arquivo, os: histImport.os.slice(i, i+PEDACO) }, 600000);
+    }
+    resumo.innerHTML = `<div class="note" style="background:var(--ok-bg); color:var(--ok-fg);">${ic("check")}<div>Plano ${plano}: <b>${Number(r.historicoTotalNoPlano||0).toLocaleString("pt-BR")}</b> OS no histórico.</div></div>`;
+    histGestPlanos = null; histGestCarregar();
+  }catch(err){
+    let t = err.message; const m = t.match(/\(([^)]+)\)\s*$/); if(m) t = m[1];
+    resumo.innerHTML = `<div class="login-error">${ic("info")}<div>Erro: ${escapeHtml(t)}</div></div>`;
+    if(btn) btn.disabled = false;
+  }
+}
 function alimentadorRowHtml(camada, item){
   const idLinha = `${camada}|${item.chave}`;
   const trechosTexto = typeof item.trechos==="number" ? `${item.trechos.toLocaleString("pt-BR")} trecho(s)` : "—";
@@ -10632,6 +10720,7 @@ const CADASTROS_BASES = {
   indisponibilidade: { label: "Indisponibilidade de equipes", especial: "indisp" },
   // v3.17.1 - exportar/importar as programações (antes só pelo "Importar sistema antigo")
   programacoesBase: { label: "Programações", especial: "registros", soLaravel: true },
+  historicoBase: { label: "Histórico de podas", especial: "historicoGest", soLaravel: true },
   // v3.5.0 - correção manual e soberana de OS levantada errada
   ajusteOs: { label: "Ajuste de OS", especial: "ajuste" },
   auditoria: { label: "Auditoria de podas", especial: "auditoria" },
@@ -10814,6 +10903,7 @@ function cadastroGridHtmlCore(){
   if(cfg.especial === "indisp") return indispPaginaHtml();
   if(cfg.especial === "ajuste") return registrosIoBarraHtml("ajustes","ajustes_log") + ajusteOsCardHtml();
   if(cfg.especial === "registros") return programacoesGestaoHtml();
+  if(cfg.especial === "historicoGest") return histGestHtml();
   if(cfg.especial === "auditoria") return auditoriaPaginaHtml();
   if(cfg.especial === "ativos") return ativosGestaoHtml();
   if(cfg.especial === "equip") return equipGestaoHtml();
@@ -10895,7 +10985,8 @@ async function carregarCadastroPagina(){
     const w = document.getElementById("cadastroGridWrap"); if(w) w.innerHTML = cadastroGridHtml();
     return;
   }
-  if(cfg.especial === "metas" || cfg.especial === "lista" || cfg.especial === "justificativas" || cfg.especial === "indisp" || cfg.especial === "auditoria" || cfg.especial === "ajuste" || cfg.especial === "registros" || cfg.especial === "rankgestao"){
+  if(cfg.especial === "metas" || cfg.especial === "lista" || cfg.especial === "justificativas" || cfg.especial === "indisp" || cfg.especial === "auditoria" || cfg.especial === "ajuste" || cfg.especial === "registros" || cfg.especial === "historicoGest" || cfg.especial === "rankgestao"){
+    if(cfg.especial === "historicoGest") histGestPlanos = null;
     if(cfg.especial === "rankgestao"){ try{ await rankCarregarListas(true); }catch(e){ state.rankListas = state.rankListas || []; } }
     if(cfg.especial === "lista" && API_ONLINE){
       try{ const l = await apiGet("/listas"); if(l) state.listas = l; }catch(e){ /* mantém o que já está carregado */ }
@@ -10969,7 +11060,7 @@ function podeEditarLinhaBase(){
 }
 function podeEscreverBase(chaveBase){
   const cfg = CADASTROS_BASES[chaveBase || cadastroBaseAtiva];
-  if(!cfg || cfg.especial==="resetar" || cfg.especial==="registros" || cfg.especial==="justificativas" || cfg.especial==="indisp" || cfg.especial==="auditoria" || cfg.especial==="ajuste" || cfg.especial==="rankgestao") return false;
+  if(!cfg || cfg.especial==="resetar" || cfg.especial==="registros" || cfg.especial==="historicoGest" || cfg.especial==="justificativas" || cfg.especial==="indisp" || cfg.especial==="auditoria" || cfg.especial==="ajuste" || cfg.especial==="rankgestao") return false;
   if(!API_ONLINE) return false;
   const mod = (cfg.especial==="metas") ? "metas" : "manutencao";
   return minhaPermissao(mod,"importar") && minhaPermissao(mod,"editar");

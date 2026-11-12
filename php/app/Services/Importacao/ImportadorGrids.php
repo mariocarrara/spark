@@ -653,6 +653,22 @@ class ImportadorGrids
         return $saida;
     }
 
+    /**
+     * Historico de um plano que ja chega no formato das OS (Gestao de Bases > Historico: historico_podas_<plano>.json
+     * do legado ou o exportado daqui). OS repetida: vale a ultima. $modo: substituir | acrescentar.
+     */
+    public function historicoDeOs(int $plano, string $modo, array $os, ?string $usuario, string $arquivo): array
+    {
+        $porId = [];
+        foreach ($os as $o) {
+            if (is_array($o) && trim((string) ($o['id'] ?? '')) !== '') {
+                $porId[(string) $o['id']] = $o;
+            }
+        }
+
+        return $this->gravarHistorico($plano, $modo === 'acrescentar' ? 'acrescentar' : 'substituir', $porId, $usuario, $arquivo) + ['recebidas' => count($os), 'validas' => count($porId)];
+    }
+
     /** Historico de um plano: 'substituir' apaga o plano e grava; 'acrescentar' junta pelo numero da OS. */
     private function gravarHistorico(int $plano, string $modo, array $novos, ?string $usuario, string $arquivos): array
     {

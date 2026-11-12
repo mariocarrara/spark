@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\CamadasController;
 use App\Http\Controllers\Api\CamadasRedeController;
 use App\Http\Controllers\Api\EquipeController;
 use App\Http\Controllers\Api\FeriadoController;
+use App\Http\Controllers\Api\HistoricoController;
 use App\Http\Controllers\Api\ImportacaoBasesController;
 use App\Http\Controllers\Api\ImportacaoController;
 use App\Http\Controllers\Api\ImportacaoGridController;
@@ -114,6 +115,14 @@ Route::middleware('auth:api')->group(function () {
     // o numero da OS tem "/" (ex.: AUDTUP1  000304/2026): {osId} aceita barra
     Route::put('/ajustes/{osId}', [AjusteController::class, 'salvar'])->where('osId', '.+');
     Route::delete('/ajustes/{osId}', [AjusteController::class, 'remover'])->where('osId', '.+');
+
+    // Historico de podas por plano
+    Route::get('/historico/planos', [HistoricoController::class, 'planos']);
+    Route::get('/historico/os', [HistoricoController::class, 'os']);
+    Route::get('/historico/exportar', [HistoricoController::class, 'exportar']);
+    Route::get('/historico/mapa', [HistoricoController::class, 'mapa']);
+    Route::delete('/historico/planos/{plano}', [HistoricoController::class, 'apagarPlano']);
+    Route::post('/historico/planos/{plano}/importar', [HistoricoController::class, 'importarPlano']);
 
     // Metas e Justificativas (a produtividade e calculada no navegador)
     Route::get('/metas', [MetaController::class, 'index']);
