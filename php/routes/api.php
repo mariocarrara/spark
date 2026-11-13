@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\HistoricoController;
 use App\Http\Controllers\Api\ImportacaoBasesController;
 use App\Http\Controllers\Api\ImportacaoController;
 use App\Http\Controllers\Api\ImportacaoGridController;
+use App\Http\Controllers\Api\ImportacaoRedeController;
 use App\Http\Controllers\Api\IndisponibilidadeController;
 use App\Http\Controllers\Api\JustificativaController;
 use App\Http\Controllers\Api\ListaController;
@@ -101,6 +102,7 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/equip/poste', [CamadasController::class, 'equipPoste']);
     Route::get('/equip/lista', [CamadasController::class, 'equipLista']);
     Route::get('/equip/cadastro', [CamadasController::class, 'equipCadastro']);
+    Route::get('/equip/conferencia', [CamadasController::class, 'equipConferencia']);
     Route::get('/manutencao/localidades-mapa', [ManutencaoController::class, 'localidadesMapa']);
     Route::get('/manutencao/camadas', [MapaRedeController::class, 'camadas']);
     Route::get('/manutencao/km-rede-resumo', [MapaRedeController::class, 'kmRedeResumo']);
@@ -191,6 +193,9 @@ Route::middleware('auth:api')->group(function () {
     // Importacao de bases pequenas (o navegador le a planilha)
     Route::post('/importacao/validar', [ImportacaoBasesController::class, 'validar']);
     Route::post('/importacao/confirmar', [ImportacaoBasesController::class, 'confirmar']);
+
+    // Rede MT/BT/AT (Shapefile) e Reserva Legal / APP (KMZ), com progresso ao vivo
+    Route::post('/importacao/shapefile', [ImportacaoRedeController::class, 'importar']);
 
     // Importacao das grids de OS (SGM/SIGOD) com progresso ao vivo
     Route::post('/importacao/{segmento}', [ImportacaoGridController::class, 'podas'])

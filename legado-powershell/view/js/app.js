@@ -9594,7 +9594,7 @@ async function enviarShapefile(){
     const fd = new FormData();
     fd.append("camada", s.camada);
     fd.append("base", importSelecionada);
-    importArquivosShapefile.forEach(f => fd.append("arquivo", f, f.name));
+    importArquivosShapefile.forEach(f => fd.append(campoArquivoUpload(), f, f.name));
     // stallMs mais folgado que o padrão (120s) pra essa rota: mesmo com o
     // escritor de GeoJSON rápido (progresso a cada trecho, não mais um
     // ConvertTo-Json silencioso), uma camada BT real pode ter centenas de
@@ -9722,7 +9722,7 @@ async function enviarKmz(){
       const fd = new FormData();
       fd.append("camada", s.camada);
       fd.append("base", importSelecionada);
-      arquivos.forEach(f => fd.append("arquivo", f, f.name));
+      arquivos.forEach(f => fd.append(campoArquivoUpload(), f, f.name));
       const resp = await apiUploadFormDataStream("/importacao/shapefile", fd, (p)=>{
         atualizarBarraShapefile(p);
         const el = notaLoteEl();
@@ -10410,6 +10410,8 @@ function atualizarBarraPodas(p){
     return "Processando…";
   });
 }
+/* v3.18.1 - no sistema novo (PHP) varios arquivos no mesmo campo precisam do [] no nome; o PowerShell aceita os dois */
+function campoArquivoUpload(){ return (typeof API_BACKEND!=="undefined" && API_BACKEND==="laravel") ? "arquivo[]" : "arquivo"; }
 function atualizarBarraShapefile(p){
   atualizarBarraImport(p, (p)=>{
     switch(p.fase){

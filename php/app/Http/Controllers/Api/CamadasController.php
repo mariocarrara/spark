@@ -254,6 +254,42 @@ class CamadasController extends Controller
         return response()->json(['total' => $total, 'pagina' => $pg, 'tamanhoPagina' => 50, 'itens' => $itens]);
     }
 
+    /**
+     * GET /equip/conferencia?metros=200&limite=500 — protecoes cujo LAT/LONG do cadastro de Protecao esta longe da posicao
+     * do equipamento na BDGD (ligados pelo nome operativo). Mesma conta do SparkConferencia do legado (haversine, R = 6.371 km);
+     * cadastro repetido: vale o primeiro. -> {metros, comparados, ok, acima, semCadastro, itens:[[cod, nome, m, lat, lng, latCad, lngCad, ctmt]]}
+     */
+    public function equipConferencia(Request $r): JsonResponse
+    {
+        if ($x = $this->ver($r)) {
+            return $x;
+        }
+        $metros = max(10, min(5000, (float) ($r->query('metros') ?: 200)));
+        $limite = max(1, min(2000, (int) ($r->query('limite') ?: 500)));
+        if (! DB::table('equipamentos')->where('camada', 'protecoes')->exists()) {
+            return response()->json(['erro' => 'Importe primeiro as protecoes da BDGD (UNSEMT).'], 400);
+        }
+        if (! DB::table('equipamentos')->where('camada', 'protecoes')->whereNotNull('nome_operativo')->where('nome_operativo', '<>', '')->exists()) {
+            return response()->json(['erro' => 'Importe primeiro o Excel Isolating Equipment (nomes operativos das protecoes).'], 400);
+        }
+        if (! DB::table('protecoes')->exists()) {
+            return response()->json(['erro' => 'Importe primeiro a base de Protecao (d.Protecao.xlsx).'], 400);
+        }
+        $base = "WITH cad AS (SELECT DISTINCT ON (lower(protecao_id)) lower(protecao_id) AS k, ST_Y(loc) AS lat, ST_X(loc) AS lng FROM protecoes ORDER BY lower(protecao_id), id),
+            eq AS (SELECT e.cod_id, e.nome_operativo AS nome, ST_Y(e.loc) AS lat, ST_X(e.loc) AS lng, e.ctmt, c.k AS achou, c.lat AS clat, c.lng AS clng
+                FROM equipamentos e LEFT JOIN cad c ON c.k = lower(e.nome_operativo)
+                WHERE e.camada = 'protecoes' AND coalesce(e.nome_operativo, '') <> '' AND e.loc IS NOT NULL),
+            d AS (SELECT eq.*, CASE WHEN achou IS NOT NULL AND clat IS NOT NULL THEN 2 * 6371000.0 * atan2(sqrt(a), sqrt(1 - a)) END AS m
+                FROM eq, LATERAL (SELECT sin(radians(clat - lat) / 2) ^ 2 + cos(radians(lat)) * cos(radians(clat)) * sin(radians(clng - lng) / 2) ^ 2 AS a) x)";
+        $c = DB::selectOne("$base SELECT count(*) FILTER (WHERE achou IS NULL) AS sem, count(m) AS comp, count(*) FILTER (WHERE m <= ?) AS ok, count(*) FILTER (WHERE m > ?) AS acima FROM d",
+            [$metros, $metros]);
+        $itens = array_map(fn ($l) => [$l->cod_id, $l->nome, (float) round($l->m), (float) $l->lat, (float) $l->lng, (float) $l->clat, (float) $l->clng, $l->ctmt],
+            DB::select("$base SELECT * FROM d WHERE m > ? ORDER BY m DESC LIMIT ?", [$metros, $limite]));
+
+        return response()->json(['metros' => $metros, 'comparados' => (int) $c->comp, 'ok' => (int) $c->ok, 'acima' => (int) $c->acima,
+            'semCadastro' => (int) $c->sem, 'itens' => $itens]);
+    }
+
     /** Disjuntor / trecho / alimentador do cadastro de Protecao para UM nome (popup). */
     public function equipCadastro(Request $r): JsonResponse
     {
