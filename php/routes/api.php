@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\Api\AjudaController;
 use App\Http\Controllers\Api\AjusteController;
+use App\Http\Controllers\Api\AlertasController;
 use App\Http\Controllers\Api\AppRlController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CadastroController;
@@ -16,11 +18,14 @@ use App\Http\Controllers\Api\IndisponibilidadeController;
 use App\Http\Controllers\Api\JustificativaController;
 use App\Http\Controllers\Api\ListaController;
 use App\Http\Controllers\Api\ManutencaoController;
+use App\Http\Controllers\Api\NixController;
 use App\Http\Controllers\Api\MapaRedeController;
 use App\Http\Controllers\Api\MetaController;
 use App\Http\Controllers\Api\PendenteController;
 use App\Http\Controllers\Api\PermissaoController;
+use App\Http\Controllers\Api\PrefeiturasController;
 use App\Http\Controllers\Api\ProgramacaoController;
+use App\Http\Controllers\Api\RankController;
 use App\Http\Controllers\Api\RegistrosController;
 use App\Http\Controllers\Api\UsuarioController;
 use Illuminate\Support\Facades\Route;
@@ -116,6 +121,35 @@ Route::middleware('auth:api')->group(function () {
     // o numero da OS tem "/" (ex.: AUDTUP1  000304/2026): {osId} aceita barra
     Route::put('/ajustes/{osId}', [AjusteController::class, 'salvar'])->where('osId', '.+');
     Route::delete('/ajustes/{osId}', [AjusteController::class, 'remover'])->where('osId', '.+');
+
+    // Alertas (calculados no navegador; aqui so parametros e tratamento)
+    Route::get('/alertas/config', [AlertasController::class, 'config']);
+    Route::put('/alertas/config', [AlertasController::class, 'salvarConfig']);
+    Route::delete('/alertas/config', [AlertasController::class, 'apagarConfig']);
+    Route::get('/alertas/tratados', [AlertasController::class, 'tratados']);
+    Route::put('/alertas/tratados', [AlertasController::class, 'tratar']);
+
+    // Ajuda (perguntas e respostas do chat)
+    Route::get('/ajuda', [AjudaController::class, 'index']);
+    Route::post('/ajuda', [AjudaController::class, 'store']);
+    Route::put('/ajuda/{id}', [AjudaController::class, 'update']);
+
+    // Prefeituras e Logistica
+    Route::get('/prefeituras', [PrefeiturasController::class, 'index']);
+    Route::get('/prefeituras/config', [PrefeiturasController::class, 'config']);
+    Route::put('/prefeituras/config/{municipio}', [PrefeiturasController::class, 'salvarConfig'])->where('municipio', '.+');
+    Route::post('/prefeituras/salvar-pacote', [PrefeiturasController::class, 'salvarPacote']);
+    Route::get('/logistica/{qual}', [PrefeiturasController::class, 'logistica'])->where('qual', 'equipes|programacoes|os|vinculos');
+
+    // Pontos Nix e Rank de prioridade
+    Route::get('/nix', [NixController::class, 'index']);
+    Route::post('/nix', [NixController::class, 'store']);
+    Route::put('/nix', [NixController::class, 'raio']);
+    Route::delete('/nix', [NixController::class, 'destroy']);
+    Route::get('/rank', [RankController::class, 'index']);
+    Route::post('/rank', [RankController::class, 'store']);
+    Route::get('/rank/{id}', [RankController::class, 'show']);
+    Route::delete('/rank/{id}', [RankController::class, 'destroy']);
 
     // OS x APP / Reserva Legal
     Route::get('/apprl/indice', [AppRlController::class, 'indice']);

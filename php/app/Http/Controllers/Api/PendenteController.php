@@ -13,13 +13,8 @@ use Illuminate\Http\JsonResponse;
  */
 class PendenteController extends Controller
 {
-    public const PENDENTES = [
-        'prefeituras' => [],
-        'logistica/equipes' => [],
-        'logistica/programacoes' => [],
-        'logistica/os' => [],
-        'logistica/vinculos' => ['vinculos' => [], 'estatisticas' => []],
-    ];
+    // v3.18: todos os modulos que o front le ao abrir ja foram portados
+    public const PENDENTES = [];
 
     public function vazio(string $rota): JsonResponse
     {

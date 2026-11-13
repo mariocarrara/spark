@@ -30,6 +30,7 @@ function esc($v): string {                       // formato texto do COPY
     if ($v === null) return '@@NULO@@';
     if (is_bool($v)) return $v ? 't' : 'f';
     if (is_array($v)) $v = json_encode($v, JSON_UNESCAPED_UNICODE);
+    if (is_float($v)) return json_encode($v);   // (string) corta em 14 digitos; json_encode da o menor texto que volta ao MESMO numero
     $s = (string)$v;
     return strtr($s, ["\\" => "\\\\", "\t" => "\\t", "\n" => "\\n", "\r" => "\\r"]);
 }
