@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\EquipeController;
 use App\Http\Controllers\Api\FeriadoController;
 use App\Http\Controllers\Api\HistoricoController;
 use App\Http\Controllers\Api\ImportacaoBasesController;
+use App\Http\Controllers\Api\ImportacaoBasesGrandesController;
 use App\Http\Controllers\Api\ImportacaoController;
 use App\Http\Controllers\Api\ImportacaoGridController;
 use App\Http\Controllers\Api\ImportacaoRedeController;
@@ -208,6 +209,9 @@ Route::middleware('auth:api')->group(function () {
     // Importacao de bases pequenas (o navegador le a planilha)
     Route::post('/importacao/validar', [ImportacaoBasesController::class, 'validar']);
     Route::post('/importacao/confirmar', [ImportacaoBasesController::class, 'confirmar']);
+
+    // Bases grandes da Importacao de Bases (Vao, Protecao, VERA): o .xlsx e lido no servidor, com progresso ao vivo
+    Route::post('/importacao/{base}', [ImportacaoBasesGrandesController::class, 'importar'])->where('base', 'vao|protecao|vera');
 
     // Rede MT/BT/AT (Shapefile) e Reserva Legal / APP (KMZ), com progresso ao vivo
     Route::post('/importacao/shapefile', [ImportacaoRedeController::class, 'importar']);
