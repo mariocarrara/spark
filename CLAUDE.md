@@ -40,6 +40,8 @@ Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alert
 - O banco LOCAL agora tem OS, vao, vao_postes, regras e mo_linhas da 3.33 (14/11).
 - Permissoes v3.26: modulos novos geral, historico, medicao, regras, importacao (config spark.modulos_menu); `permissoes.valor` (false = caixa de menu desmarcada de proposito; sem linha = padrao); Usuario::podeHistorico (admin sempre; sem escolha segue manutencao).
 
+- v3.33.2 CELULAR (14/11/2026, so CSS no fim de styles.css, bloco max-width:760px/pointer:coarse; desktop nao muda): menu lateral acima do topo (z 1300; antes o topo z 1100 cortava o menu), topo numa linha (sem subtitulo; bolinha de conexao sem texto), abas viram faixa que rola de lado (nada empurra a pagina; #main overflow-x:clip), caixas do mapa uma por linha, coluna de nomes da Produtividade estreita, janelas como bottom sheet, campos 16px no toque (sem zoom do iOS), sem flash de toque. Conferido no Chrome headless 390x844 com dados reais (nenhuma tela rola de lado). Falta testar em aparelho real.
+
 ## Escopo por municipio (prefeituras)
 Prototipo em `migracao/escopo_prefeitura.sql` + `teste_rls.sql` (9 testes passam): role `spark_app` sem BYPASSRLS, por requisicao `SET LOCAL spark.escopo='interno'|'municipios'` e `spark.municipios='ibge1,ibge2'`, default-deny, view `os_portal` (security_invoker) com lista branca de campos. Municipio vem do codigo IBGE do poste ou do poste mais proximo ate 300 m. Pendente: poligonos IBGE, RLS nas demais tabelas, tela admin usuario x municipio. Norma ANEEL: REN 1.137/2025 (manejo vegetal) encontrada; Mario falou "1.133", confirmar. Compartilhamento exige convenio + LGPD.
 

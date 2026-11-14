@@ -1325,3 +1325,80 @@ td.os-texto{ max-width:340px; white-space:nowrap; overflow:hidden; text-overflow
 .nav-badge-inline{ margin-left:6px; vertical-align:1px; box-shadow:none; }
 @keyframes navBadgePop{ from{ transform:scale(.4); opacity:0; } to{ transform:scale(1); opacity:1; } }
 @media (prefers-reduced-motion: reduce){ .nav-badge{ animation:none; } }
+
+/* v3.33.2 - CELULAR (equipes de campo). Tudo aqui so vale em tela estreita ou toque; o desktop nao muda.
+   Problemas vistos nos prints do Mario: menu lateral cortado pela barra do topo (topo z 1100 > menu 40),
+   topo ocupando 1/4 da tela, abas largas empurrando a pagina para o lado, numeros cortados nas caixas
+   do mapa, coluna de nomes da Produtividade engolindo a tabela. */
+html{ -webkit-tap-highlight-color:transparent; -webkit-text-size-adjust:100%; }
+button, .btn, .tab, .nav-item, .mapa-fab, [role="button"]{ touch-action:manipulation; }
+.btn, .tab, .nav-item, .mapa-fab, .mapa-abas button{ -webkit-user-select:none; user-select:none; }
+#sidebar{ height:100dvh; }
+@media (pointer:coarse){
+  /* iOS da zoom em campo com fonte < 16px e nao volta */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea{ font-size:16px !important; }
+}
+@media (max-width:760px){
+  #main{ overflow-x:clip; }
+  /* menu por cima de tudo (o topo e o mapa ficam embaixo) */
+  #sidebar{ z-index:1300; width:min(84vw,300px); overscroll-behavior:contain;
+    padding-bottom:calc(18px + env(safe-area-inset-bottom,0px)); transition:transform .24s var(--ease-out); }
+  #sidebarOverlay{ z-index:1250; }
+  .nav-item{ padding:12px 12px; font-size:14.5px; }
+  .nav-item:active{ background:rgba(255,255,255,.12); }
+
+  /* topo numa linha so: menu + titulo + avatar/atualizar/bolinha */
+  header.topbar{ padding:calc(8px + env(safe-area-inset-top,0px)) 12px 8px; gap:8px; flex-wrap:nowrap; }
+  header.topbar > div:first-child{ min-width:0; flex:1 1 auto; gap:10px !important; }
+  header.topbar > div:first-child > div{ min-width:0; }
+  .topbar h1{ font-size:17px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .topbar .sub{ display:none; }
+  #menuBtn{ padding:10px; border-radius:11px; }
+  #menuBtn:active{ transform:scale(.95); }
+  .topbar-user{ gap:6px; flex:none; }
+  .topbar-user .avatar{ width:32px; height:32px; font-size:12px; }
+  .btn-recarregar{ width:36px; height:36px; }
+  .conn-chip{ padding:6px; }
+  .conn-chip #connTxt{ display:none; }
+
+  #view{ padding:12px 12px calc(84px + env(safe-area-inset-bottom,0px)); }
+  .card{ padding:14px; border-radius:12px; }
+  .grid{ gap:12px; }
+
+  /* abas viram uma faixa que rola de lado (nao empurram mais a pagina) */
+  .tabs{ max-width:100%; overflow-x:auto; flex-wrap:nowrap !important; scrollbar-width:none; overscroll-behavior-x:contain; scroll-snap-type:x proximity; }
+  .tabs::-webkit-scrollbar{ display:none; }
+  .tab{ flex:none; white-space:nowrap; padding:10px 14px; scroll-snap-align:start; }
+  .tab:active{ background:var(--surface-3); }
+  .table-wrap{ -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; }
+
+  /* caixas do mapa: uma por linha, numeros inteiros */
+  .mapa-kpis{ grid-template-columns:1fr; gap:8px; }
+  .kpi-grande{ font-size:24px; }
+  .kpi-tres strong{ font-size:17px; }
+  .leaflet-map.mapa-grande{ height:64svh; }
+
+  /* Produtividade: coluna de nomes mais estreita, o % aparece */
+  .prod-matrix td.prod-nome, .prod-matrix thead th:first-child{ max-width:46vw; overflow:hidden; text-overflow:ellipsis; }
+  .prod-matrix thead th:first-child{ white-space:normal; min-width:0 !important; width:40vw; }
+  .table-wrap table.prod-matrix{ min-width:0; width:auto; }
+  .card-head, .card-head > div{ flex-wrap:wrap; max-width:100%; }
+  .card-head > div{ min-width:0; }
+
+  /* janelas sobem de baixo (bottom sheet) */
+  .modal-overlay{ align-items:flex-end; padding:0; }
+  .modal{ max-width:none !important; max-height:92dvh; border-radius:var(--radius-lg) var(--radius-lg) 0 0;
+    padding:20px 16px calc(16px + env(safe-area-inset-bottom,0px)); overscroll-behavior:contain;
+    transform:translateY(24px); }
+  .modal-overlay.open .modal{ transform:translateY(0); }
+  .modal-foot{ flex-wrap:wrap; }
+  .modal-foot .btn{ flex:1 1 auto; justify-content:center; }
+
+  /* ajudante menor para nao tampar botoes */
+  .ajuda-fab{ width:48px; height:48px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom,0px)); }
+  .ajuda-painel{ right:8px; left:8px; width:auto; bottom:calc(8px + env(safe-area-inset-bottom,0px)); height:min(560px, calc(100dvh - 24px)); }
+  .toast-wrap{ left:12px; right:12px; bottom:calc(72px + env(safe-area-inset-bottom,0px)); }
+}
+@media (hover:none){
+  .btn:active{ transform:scale(.97); }
+}
