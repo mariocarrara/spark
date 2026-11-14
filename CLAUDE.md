@@ -45,6 +45,7 @@ Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alert
 - v3.33.4 (14/11/2026): Produtividade - as 3 linhas do cabecalho (semana/dia/Exec-Meta-%) eram todas sticky top:0 e se cobriam; agora altura fixa 37px e top 0/37/74 (borda virou box-shadow inset: borda colapsada nao acompanha o sticky e deixava texto vazar). Importacao de Bases: cartoes empilhados no celular (.imp-colunas).
 
 ## Escopo por municipio (prefeituras)
+14/11/2026: Mario acha provavel escalar e liberar login para PREFEITURAS e EQUIPES DE CAMPO, com cidades travadas por usuario; pediu para ir pensando (seguranca, criptografia, LGPD). ATENCAO ao implementar: os caches gzip globais (ListaOs, vera-mapa, hist_*) servem a base inteira - com escopo precisam ser por escopo ou filtrados antes de sair.
 Prototipo em `migracao/escopo_prefeitura.sql` + `teste_rls.sql` (9 testes passam): role `spark_app` sem BYPASSRLS, por requisicao `SET LOCAL spark.escopo='interno'|'municipios'` e `spark.municipios='ibge1,ibge2'`, default-deny, view `os_portal` (security_invoker) com lista branca de campos. Municipio vem do codigo IBGE do poste ou do poste mais proximo ate 300 m. Pendente: poligonos IBGE, RLS nas demais tabelas, tela admin usuario x municipio. Norma ANEEL: REN 1.137/2025 (manejo vegetal) encontrada; Mario falou "1.133", confirmar. Compartilhamento exige convenio + LGPD.
 
 ## Regras
