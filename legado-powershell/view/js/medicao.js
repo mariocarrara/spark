@@ -159,7 +159,7 @@ function medHtml(){
     : (semMo ? `<div class="card" style="margin-bottom:12px; border-left:4px solid #F79009;">${semMo.toLocaleString("pt-BR")} OS do filtro não têm linha de MO (aparecem sem recurso, com o realizado da própria OS).</div>` : "");
 
   const campos = `<div class="card" style="margin-bottom:12px;">
-    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; align-items:end;">
+    <div class="filters" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; align-items:end;">
       <div class="field"><label>Execução de</label><input type="date" value="${e.de}" onchange="medSetCampo('de', this.value)"></div>
       <div class="field"><label>Execução até</label><input type="date" value="${e.ate}" onchange="medSetCampo('ate', this.value)"></div>
       ${multiComboHtml("medPrest", "Terceiro (prestador)", medUnicos("prestador"), e.prestadores, "medTogglePrest", "medLimparPrest", "Todos", "Buscar terceiro…")}

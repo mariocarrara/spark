@@ -1402,3 +1402,35 @@ button, .btn, .tab, .nav-item, .mapa-fab, [role="button"]{ touch-action:manipula
 @media (hover:none){
   .btn:active{ transform:scale(.97); }
 }
+
+/* v3.33.3 - celular: botao que recolhe/abre os filtros (ux.js) */
+.filtros-toggle{ display:none; }
+@media (max-width:760px){
+  .filtros-recolhivel:not(.filtros-abertos){ display:none !important; }
+  .filtros-toggle{
+    display:flex; align-items:center; gap:10px; width:100%; min-height:44px; padding:4px 2px;
+    border:0; background:none; font:inherit; font-size:14.5px; font-weight:600; color:var(--text); cursor:pointer; text-align:left;
+    -webkit-user-select:none; user-select:none; touch-action:manipulation;
+  }
+  .filtros-toggle > svg:first-child{ color:var(--muted); flex:none; }
+  .filtros-toggle small{ font-size:12px; font-weight:500; color:var(--muted); }
+  .filtros-toggle .filtros-n{ font-size:11.5px; font-weight:700; color:#fff; background:var(--accent); padding:2px 9px; border-radius:999px; }
+  .filtros-toggle .filtros-seta{ margin-left:auto; color:var(--muted); transition:transform var(--dur-md) var(--ease-out); }
+  .filtros-toggle[aria-expanded="true"]{ margin-bottom:10px; }
+  .card:has(> .filtros-toggle[aria-expanded="false"]){ padding-top:4px; padding-bottom:4px; }
+  .filtros-toggle[aria-expanded="true"] .filtros-seta{ transform:rotate(180deg); }
+  .filtros-toggle:active{ opacity:.7; }
+}
+
+/* v3.33.3 - computador: conteudo mais fluido (monitor largo aproveita a largura; margens acompanham a janela) */
+@media (min-width:761px){
+  #view{ max-width:1480px; padding:clamp(18px,2vw,30px) clamp(18px,2.4vw,40px) 60px; }
+  header.topbar{ padding:14px clamp(18px,2.4vw,40px); }
+}
+@media (hover:hover) and (pointer:fine){
+  .card{ transition:box-shadow var(--dur-md) var(--ease-out); }
+}
+/* abas: rotulo numa linha so; se nao couber, a faixa rola de lado (antes quebrava "Programação por / equipe") */
+.tabs{ max-width:100%; overflow-x:auto; scrollbar-width:thin; }
+.tab{ white-space:nowrap; flex:none; }
+@media (min-width:761px){ .tabs{ flex-wrap:wrap; overflow:visible; } }

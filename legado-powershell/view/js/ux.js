@@ -228,3 +228,52 @@ async function recarregarSpark(){
   }catch(e){}
   location.reload();
 }
+
+/* v3.33.3 - celular: os filtros de cada tela ficam recolhidos atras de um botao "Filtros" que mostra quantos
+   estao ativos (a equipe de campo via uma tela inteira de combos antes dos dados). So em tela estreita;
+   no computador o botao nem aparece. O aberto/fechado vale por tela enquanto a pagina estiver aberta. */
+(function(){
+  const mq = window.matchMedia("(max-width:760px)");
+  const abertos = {};
+  const SEL = "#view .filters, #view .ent-grid, #view .rk-filtros";
+  const ICONE = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg>';
+  const SETA = '<svg class="filtros-seta" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+  function ativos(box){
+    let n = 0;
+    box.querySelectorAll(".alimentador-multiselect-todos input[type=checkbox]").forEach(c=>{ if(!c.checked) n++; });
+    box.querySelectorAll('input[type=text], input[type=date], input[type=search], input:not([type])').forEach(i=>{
+      if(!i.closest(".alimentador-multiselect-panel") && String(i.value||"").trim()) n++;
+    });
+    return n;
+  }
+  function aplicar(box, bt, chave){
+    const aberto = !!abertos[chave];
+    box.classList.add("filtros-recolhivel");
+    box.classList.toggle("filtros-abertos", aberto);
+    const n = ativos(box);
+    const html = ICONE + '<span>Filtros</span>' + (n ? '<b class="filtros-n">'+n+(n===1?' ativo':' ativos')+'</b>' : '<small>nenhum ativo</small>') + SETA;
+    if(bt.innerHTML !== html) bt.innerHTML = html;
+    if(bt.getAttribute("aria-expanded") !== String(aberto)) bt.setAttribute("aria-expanded", String(aberto));
+  }
+  function varrer(){
+    if(!mq.matches) return;
+    document.querySelectorAll(SEL).forEach((box, i)=>{
+      if(box.querySelectorAll(".field").length < 4) return;   // poucos campos: deixa aberto
+      const chave = (location.hash || "#geral") + "|" + i;
+      let bt = box.previousElementSibling;
+      if(!bt || !bt.classList.contains("filtros-toggle")){
+        bt = document.createElement("button");
+        bt.type = "button"; bt.className = "filtros-toggle";
+        bt.addEventListener("click", ()=>{ abertos[chave] = !abertos[chave]; aplicar(box, bt, chave); });
+        box.before(bt);
+      }
+      aplicar(box, bt, chave);
+    });
+  }
+  let agendado = false;
+  function agendar(){ if(agendado) return; agendado = true; requestAnimationFrame(()=>{ agendado = false; try{ varrer(); }catch(e){ console.warn("ux.js filtros:", e); } }); }
+  new MutationObserver(agendar).observe(document.documentElement, { childList:true, subtree:true });
+  document.addEventListener("change", agendar, true);
+  if(mq.addEventListener) mq.addEventListener("change", agendar);
+  agendar();
+})();
