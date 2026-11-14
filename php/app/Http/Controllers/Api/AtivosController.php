@@ -85,7 +85,7 @@ class AtivosController extends Controller
             return response()->json(['erro' => 'Só administradores podem apagar todas as bases.'], 403);
         }
         $tabelas = ['equipes', 'vao', 'protecoes', 'vera', 'metas', 'conjuntos', 'os', 'programacoes', 'justificativas', 'indisponibilidades',
-            'importacoes_log', 'protecao_alimentador', 'alimentador_polo', 'exclusoes', 'rede_feicoes', 'rede_alimentadores', 'app_rl_indice'];
+            'importacoes_log', 'protecao_alimentador', 'alimentador_polo', 'exclusoes', 'rede_feicoes', 'rede_alimentadores', 'app_rl_indice', 'mo_linhas'];
         $brutos = ['prefeituras', 'localidades', 'logistica_equipes', 'logistica_os', 'logistica_programacoes', 'logistica_vinculos'];
         try {
             DB::transaction(function () use ($tabelas, $brutos) {

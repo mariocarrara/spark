@@ -26,7 +26,8 @@ json_strip_nulls(json_build_object(
   'previstoEstrutura', os.previsto_estrutura::float8, 'realizadoPoda', os.realizado_poda::float8, 'realizadoLimpeza', os.realizado_limpeza::float8,
   'realizadoEstrutura', os.realizado_estrutura::float8,
   'posteId', os.poste_id, 'posteTipo', os.poste_tipo, 'posteAreaLocal', os.poste_area_local, 'posteConjunto', os.poste_conjunto, 'posteMun', os.poste_mun,
-  'posteLat', ST_Y(os.poste_loc), 'posteLng', ST_X(os.poste_loc), 'previstoPorEsquema', os.previsto_por_esquema, 'localidadePorPoste', os.localidade_por_poste
+  'posteLat', ST_Y(os.poste_loc), 'posteLng', ST_X(os.poste_loc), 'previstoPorEsquema', os.previsto_por_esquema, 'localidadePorPoste', os.localidade_por_poste,
+  'prioridade', os.prioridade, 'numObra', os.num_obra, 'recursoMo', os.recurso_mo
 ))
 SQL;
 

@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\IndisponibilidadeController;
 use App\Http\Controllers\Api\JustificativaController;
 use App\Http\Controllers\Api\ListaController;
 use App\Http\Controllers\Api\ManutencaoController;
+use App\Http\Controllers\Api\MedicaoController;
 use App\Http\Controllers\Api\NixController;
 use App\Http\Controllers\Api\MapaRedeController;
 use App\Http\Controllers\Api\MetaController;
@@ -159,6 +160,9 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/rank', [RankController::class, 'store']);
     Route::get('/rank/{id}', [RankController::class, 'show']);
     Route::delete('/rank/{id}', [RankController::class, 'destroy']);
+
+    // Medicao de terceiros (v3.24)
+    Route::get('/medicao/mo', [MedicaoController::class, 'mo']);
 
     // Configuracao > Regras de importacao (v3.33)
     Route::get('/regras', [RegrasController::class, 'index']);

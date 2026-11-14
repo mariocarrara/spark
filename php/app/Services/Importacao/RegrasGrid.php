@@ -22,6 +22,14 @@ class RegrasGrid
         return $t === '' ? null : $t;
     }
 
+    /** v3.21 - criticidade do SGM (Prioridade / CodPrioridade): MAIUSCULAS, sem espacos nas pontas; vazio ou #N/A -> null (Get-PrioridadeSgm). */
+    public static function prioridadeSgm($v): ?string
+    {
+        $t = mb_strtoupper(trim((string) $v));
+
+        return ($t === '' || $t === '#N/A') ? null : $t;
+    }
+
     public static function textoOuNulo($v): ?string
     {
         $t = trim((string) $v);

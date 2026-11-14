@@ -52,7 +52,7 @@ class CamadasApiTest extends TestCase
     {
         $r = $this->get('/api/manutencao/vera-mapa', $this->h)->assertOk();
         $linhas = array_map('json_decode', array_filter(explode("\n", $r->streamedContent())));
-        $this->assertEquals([[-22.0, -50.0, 'V1', 'IPÊ']], $linhas[0]->pontos);
+        $this->assertEquals([[-22.0, -50.0, 'V1', 'IPÊ', null, null]], $linhas[0]->pontos);   // v3.32.1: + alimentador e cidade
         $this->assertSame(['lote', 'final', 1], [$linhas[0]->tipo, $linhas[1]->tipo, $linhas[1]->total]);
     }
 

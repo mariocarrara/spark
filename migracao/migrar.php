@@ -228,7 +228,7 @@ if ($cfg) { $del = $pdo->prepare('DELETE FROM configuracoes WHERE chave = ?'); f
 copiar($pdo, 'configuracoes', ['chave','valor','atualizado_em','atualizado_por'], (function () use ($cfg) { foreach ($cfg as $c) yield [$c[0], $c[1], $c[2] ?? date('c'), $c[3]]; })());
 
 // ---------------- OS (base atual e historico) ----------------
-$colsOs = ['id','origem','os_primaria','id_vera','status_os','tipo_servico','tipo_equipe_necessaria','tipo_equipe_exec','prioridade_ew','equipe_id','data_abertura','data_execucao','data_prevista','alimentador','conjunto','protecao_id','trecho','localidade','desc_esquema','observacao','loc','loc_fonte','loc_origem','loc_aproximada','previsto','realizado','previsto_poda','previsto_limpeza','previsto_estrutura','realizado_poda','realizado_limpeza','realizado_estrutura','poste_id','poste_tipo','poste_area_local','poste_conjunto','poste_mun','poste_loc','previsto_por_esquema','localidade_por_poste'];
+$colsOs = ['id','origem','os_primaria','id_vera','status_os','tipo_servico','tipo_equipe_necessaria','tipo_equipe_exec','prioridade_ew','equipe_id','data_abertura','data_execucao','data_prevista','alimentador','conjunto','protecao_id','trecho','localidade','desc_esquema','observacao','loc','loc_fonte','loc_origem','loc_aproximada','previsto','realizado','previsto_poda','previsto_limpeza','previsto_estrutura','realizado_poda','realizado_limpeza','realizado_estrutura','poste_id','poste_tipo','poste_area_local','poste_conjunto','poste_mun','poste_loc','previsto_por_esquema','localidade_por_poste','prioridade','num_obra','recurso_mo'];
 function linhaOs(array $o): array {
     $l = $o['localizacao'] ?? [];
     return [$o['id'], $o['origem'] ?? '', nn($o['osPrimaria'] ?? null), nn($o['idVera'] ?? null), $o['statusOS'] ?? 'Pendente', $o['tipoServico'] ?? '', nn($o['tipoEquipeNecessaria'] ?? null), nn($o['tipoEquipeExec'] ?? null),
@@ -237,7 +237,8 @@ function linhaOs(array $o): array {
         pt($l['lat'] ?? null, $l['lng'] ?? null), nn($l['fonte'] ?? null), nn($l['origem'] ?? null), (bool)($l['aproximada'] ?? false),
         num($o['previsto'] ?? 0), num($o['realizado'] ?? 0), num($o['previstoPoda'] ?? 0), num($o['previstoLimpeza'] ?? 0), num($o['previstoEstrutura'] ?? 0), num($o['realizadoPoda'] ?? 0), num($o['realizadoLimpeza'] ?? 0), num($o['realizadoEstrutura'] ?? 0),
         nn($o['posteId'] ?? null), nn($o['posteTipo'] ?? null), nn($o['posteAreaLocal'] ?? null), nn($o['posteConjunto'] ?? null), nn($o['posteMun'] ?? null), pt($o['posteLat'] ?? null, $o['posteLng'] ?? null),
-        isset($o['previstoPorEsquema']) ? (bool)$o['previstoPorEsquema'] : null, isset($o['localidadePorPoste']) ? (bool)$o['localidadePorPoste'] : null];
+        isset($o['previstoPorEsquema']) ? (bool)$o['previstoPorEsquema'] : null, isset($o['localidadePorPoste']) ? (bool)$o['localidadePorPoste'] : null,
+        nn($o['prioridade'] ?? null), nn($o['numObra'] ?? null), nn($o['recursoMo'] ?? null)];
 }
 echo "OS (base atual)\n";
 // em fluxo: o arquivo tem ~100 MB (ver lerJsonItens)
@@ -351,10 +352,22 @@ if (parte($pdo, 'regras.json', 'regras')) {
 if (parte($pdo, 'regras_historico.json', 'regras_historico'))
 copiar($pdo, 'regras_historico', ['em','usuario','regra_id','nome','acao','antes','depois'],
   (function () use ($model) { foreach (lerJson("$model/regras_historico.json") ?? [] as $h) yield [nn($h['em'] ?? null) ?? date('c'), nn($h['usuario'] ?? null), nn($h['regraId'] ?? null), nn($h['nome'] ?? null), nn($h['acao'] ?? null), $h['antes'] ?? null, $h['depois'] ?? null]; })());
+// v3.23 - linhas da MO (formato por colunas: {origem, geradoEm, colunas, linhas:[[os,grupo,tipo,qtdPoda,qtdLimpeza,qtdEstrutura]]})
+foreach (['executada', 'pendente'] as $orig) {
+    $arqMo = "mo_linhas_$orig.json";
+    if (!tem($arqMo)) { $pulados[] = $arqMo; continue; }
+    $pdo->prepare('DELETE FROM mo_linhas WHERE origem = ?')->execute([$orig]);
+    $jm = lerJson("$model/$arqMo") ?? [];
+    copiar($pdo, 'mo_linhas', ['origem','ordem','os','grupo','tipo','qtd_poda','qtd_limpeza','qtd_estrutura'],
+      (function () use ($jm, $orig) { foreach ($jm['linhas'] ?? [] as $i => $l) yield [$orig, $i, (string)$l[0], nn($l[1] ?? null), nn($l[2] ?? null), $l[3] ?? 0, $l[4] ?? 0, $l[5] ?? 0]; })(), "mo_linhas $orig");
+    $pdo->prepare("INSERT INTO configuracoes (chave, valor) VALUES (?, ?::jsonb) ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor")
+        ->execute(["mo_linhas_$orig", json_encode(['geradoEm' => $jm['geradoEm'] ?? null, 'linhas' => count($jm['linhas'] ?? [])])]);
+}
+
 // Rede de seguranca: todo .json que este script NAO leu acima vai inteiro para legado_bruto (nada se perde).
 $lidos = ['ajuda_faq','ajustes_os','ajustes_os_log','alertas_config','alertas_tratados','alimentador_polo','app_rl_config','conjuntos','equipes','esquemas',
   'exclusoes','feriados','historico_podas_meta','importacoes_log','indisponibilidades','justificativas','listas_cadastro','manutencao_os','metas','nix','nix_meta',
-  'permissoes','prefeituras_config','prioridade_ew','programacao','programacao_log','protecao','protecao_alim','rank_listas','solicitacoes_cadastro','usuarios','vao','vera','regras','regras_historico'];
+  'permissoes','prefeituras_config','prioridade_ew','programacao','programacao_log','protecao','protecao_alim','rank_listas','solicitacoes_cadastro','usuarios','vao','vera','regras','regras_historico','mo_linhas_executada','mo_linhas_pendente'];
 $brutoSt = $pdo->prepare('INSERT INTO legado_bruto (entidade, dados) VALUES (?, ?::jsonb) ON CONFLICT (entidade) DO UPDATE SET dados = EXCLUDED.dados, importado_em = now()');   // so a entidade que veio
 $nBruto = 0;
 foreach (glob("$model/*.json") ?: [] as $arq) {

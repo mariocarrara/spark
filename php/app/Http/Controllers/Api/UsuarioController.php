@@ -38,6 +38,9 @@ class UsuarioController extends Controller
         if (mb_strlen($senha) < $min || strlen($senha) > 72) { // bcrypt ignora o que passa de 72 bytes
             return response()->json(['erro' => "Escolha uma senha de {$min} a 72 caracteres."], 400);
         }
+        if ($motivo = self::forcaSenha($senha, $email)) {
+            return response()->json(['erro' => $motivo], 400);
+        }
         $nome = mb_substr(trim(strip_tags((string) $request->input('nome', ''))), 0, 120);
         // hash calculado SEMPRE (antes de saber se o e-mail existe), para o tempo de resposta nao entregar isso
         $hash = Hash::make($senha);
@@ -263,6 +266,35 @@ class UsuarioController extends Controller
         Auditoria::registrar($nomeAcao, 'usuarios', $alvo->id, $eu->id, ['status' => ['de' => $antes, 'para' => $status]], $request->ip());
 
         return response()->json(self::resumo($alvo));
+    }
+
+    /**
+     * v3.18 (Test-ForcaSenha): senha escolhida no pedido de cadastro precisa de letra e numero, nao pode ser comum,
+     * nem um caractere repetido, nem conter o e-mail. -> motivo, ou null se estiver ok.
+     */
+    public static function forcaSenha(string $senha, string $email): ?string
+    {
+        if (! preg_match('/[A-Za-z]/', $senha)) {
+            return 'Use pelo menos uma letra na senha.';
+        }
+        if (! preg_match('/[0-9]/', $senha)) {
+            return 'Use pelo menos um número na senha.';
+        }
+        $min = mb_strtolower($senha);
+        $comuns = ['12345678', '123456789', '1234567890', 'abc12345', 'senha123', 'senha1234', 'password1', 'password123', 'qwerty123', 'energisa1', 'energisa123',
+            'spark1234', 'spark123', 'admin123', 'mudar123'];
+        if (in_array($min, $comuns, true)) {
+            return 'Essa senha é muito comum. Escolha outra.';
+        }
+        if (preg_match('/^(.)\1+$/u', $senha)) {
+            return 'A senha não pode repetir o mesmo caractere.';
+        }
+        $local = mb_strtolower(trim(explode('@', $email)[0]));
+        if (mb_strlen($local) >= 4 && str_contains($min, $local)) {
+            return 'A senha não pode conter o seu e-mail.';
+        }
+
+        return null;
     }
 
     /** Conta de administrador so e mexida por administrador. */

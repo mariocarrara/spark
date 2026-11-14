@@ -49,6 +49,15 @@ class ImportacaoGridTest extends TestCase
             'Observação', 'Prioridade', 'Data de criação', 'Início Execução', 'Término Execução', 'TIPO_EQUIPE_EXEC', 'Complemento de Localização', 'CODIGO DA ARVORE', 'Trecho', 'protecao']], $linhas));
     }
 
+    private function adminCab(): array
+    {
+        $u = new \App\Models\Usuario(['id' => 'adm-grid', 'nome' => 'Adm', 'email' => 'adm-grid@t.local', 'status_conta' => 'Ativo', 'perfil_base' => 'Administrador']);
+        $u->senha_hash = \Illuminate\Support\Facades\Hash::make('senha-forte-1');
+        $u->save();
+
+        return ['Authorization' => 'Bearer '.\App\Services\SessaoToken::criar($u, '127.0.0.1', 'teste')];
+    }
+
     private function os(string $id): array
     {
         $o = DB::selectOne('SELECT *, ST_Y(loc) AS lat, ST_X(loc) AS lng FROM os WHERE id = ?', [$id]);
@@ -114,6 +123,15 @@ class ImportacaoGridTest extends TestCase
         $o4 = $this->os('EQA 0004');   // PODA LINEAR: limpeza = 0,5 km x 15.000 m2
         $this->assertSame('Limpeza de Faixa', $o4['tipo_servico']);
         $this->assertEquals([7500, 0, 0], [(float) $o4['realizado_limpeza'], (float) $o4['realizado_poda'], (float) $o4['previsto_poda']]);
+
+        // v3.21-v3.23: criticidade do SGM, Recurso (MO 1) e linhas da MO para a Medicao
+        $this->assertSame(['ALTA', 'Poda', null], [$o1['prioridade'], $o1['recurso_mo'], $o1['num_obra']]);
+        $this->assertSame(['Faixa', 'URGENTE', 'Estrutura'], [$o2['recurso_mo'], $o3['prioridade'], $o3['recurso_mo']]);   // 0003 sem MO executada: recurso da mae na MO pendente
+        $this->assertSame(4, $res['moLinhasGravadas']);
+        $this->assertSame([['EQA 0001', 'Poda', 'Poda', 1, 0, 0], ['EQA 0001', 'Poda', '', 1, 0, 0]],
+            array_slice(json_decode($this->get('/api/medicao/mo', $this->adminCab())->assertOk()->getContent(), true)['linhas'], 0, 2));
+        $noMapa = json_decode(DB::selectOne('SELECT '.\App\Services\ListaOs::OBJETO.'::text AS j FROM os WHERE id = ?', ['EQA 0001'])->j, true);
+        $this->assertSame(['ALTA', 'Poda'], [$noMapa['prioridade'], $noMapa['recursoMo']]);   // o mapa recebe os campos novos
 
         $this->assertSame([], $this->os('EQA 0005'));   // sem MO e sem mae: descartada
         $this->assertSame(['EQA 0099'], DB::table('os')->where('loc_fonte', 'GRID_PENDENTE')->pluck('id')->all());

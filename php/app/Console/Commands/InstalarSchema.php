@@ -37,6 +37,10 @@ class InstalarSchema extends Command
                     trechos INT NOT NULL DEFAULT 0, metros NUMERIC, atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (camada, alimentador));
                 CREATE TABLE IF NOT EXISTS app_rl_indice (os_id TEXT PRIMARY KEY, app NUMERIC, rl NUMERIC);
                 ALTER TABLE permissoes ADD COLUMN IF NOT EXISTS valor BOOLEAN NOT NULL DEFAULT true;
+                ALTER TABLE os ADD COLUMN IF NOT EXISTS prioridade TEXT, ADD COLUMN IF NOT EXISTS num_obra TEXT, ADD COLUMN IF NOT EXISTS recurso_mo TEXT;
+                ALTER TABLE os_historico ADD COLUMN IF NOT EXISTS prioridade TEXT, ADD COLUMN IF NOT EXISTS num_obra TEXT, ADD COLUMN IF NOT EXISTS recurso_mo TEXT;
+                CREATE TABLE IF NOT EXISTS mo_linhas (origem TEXT NOT NULL, ordem INT NOT NULL, os TEXT NOT NULL, grupo TEXT, tipo TEXT,
+                    qtd_poda NUMERIC, qtd_limpeza NUMERIC, qtd_estrutura NUMERIC, PRIMARY KEY (origem, ordem));
                 CREATE TABLE IF NOT EXISTS regras (id TEXT PRIMARY KEY, ordem INT NOT NULL DEFAULT 0, dados JSONB NOT NULL);
                 CREATE TABLE IF NOT EXISTS regras_historico (id BIGSERIAL PRIMARY KEY, em TIMESTAMPTZ NOT NULL DEFAULT now(), usuario TEXT, regra_id TEXT, nome TEXT, acao TEXT, antes JSONB, depois JSONB);
                 CREATE TABLE IF NOT EXISTS equip_nomes (camada TEXT NOT NULL, cod_id TEXT NOT NULL, nome TEXT, alias TEXT, PRIMARY KEY (camada, cod_id));

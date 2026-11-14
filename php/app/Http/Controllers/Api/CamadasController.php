@@ -48,7 +48,7 @@ class CamadasController extends Controller
         }
         $v = DB::selectOne("SELECT count(*) AS n, coalesce(min(id_vera), '') AS a, coalesce(max(id_vera), '') AS b FROM vera WHERE loc IS NOT NULL");
         $dir = storage_path('app'.DIRECTORY_SEPARATOR.'cache');
-        $arq = $dir.DIRECTORY_SEPARATOR.'vera_'.md5($v->n.'|'.$v->a.'|'.$v->b).'.ndjson.gz';
+        $arq = $dir.DIRECTORY_SEPARATOR.'vera_v2_'.md5($v->n.'|'.$v->a.'|'.$v->b).'.ndjson.gz';
         if (! is_file($arq)) {
             if (! is_dir($dir)) {
                 mkdir($dir, 0775, true);
@@ -59,14 +59,14 @@ class CamadasController extends Controller
             $enviadas = 0;
             $ultimo = null;
             do {
-                $lote = DB::select('SELECT id_vera, ST_Y(loc) AS lat, ST_X(loc) AS lng, especie FROM vera WHERE loc IS NOT NULL'
+                $lote = DB::select('SELECT id_vera, ST_Y(loc) AS lat, ST_X(loc) AS lng, especie, alimentador, cidade FROM vera WHERE loc IS NOT NULL'
                     .($ultimo === null ? '' : ' AND id_vera > ?').' ORDER BY id_vera LIMIT 5000', $ultimo === null ? [] : [$ultimo]);
                 if (! $lote) {
                     break;
                 }
                 $pontos = [];
                 foreach ($lote as $p) {
-                    $pontos[] = [(float) $p->lat, (float) $p->lng, $p->id_vera, $p->especie];
+                    $pontos[] = [(float) $p->lat, (float) $p->lng, $p->id_vera, $p->especie, $p->alimentador, $p->cidade];   // v3.32.1: alimentador e cidade no quadro da arvore
                     $ultimo = $p->id_vera;
                 }
                 $enviadas += count($pontos);

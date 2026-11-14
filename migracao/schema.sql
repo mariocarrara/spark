@@ -190,6 +190,15 @@ CREATE TABLE ajuda_faq (
 CREATE TABLE regras (id TEXT PRIMARY KEY, ordem INT NOT NULL DEFAULT 0, dados JSONB NOT NULL);
 CREATE TABLE regras_historico (id BIGSERIAL PRIMARY KEY, em TIMESTAMPTZ NOT NULL DEFAULT now(), usuario TEXT, regra_id TEXT, nome TEXT, acao TEXT, antes JSONB, depois JSONB);
 
+-- v3.23 linhas da MO (uma por recurso apontado na OS), base da Medicao de terceiros; cada importacao substitui a sua origem
+CREATE TABLE mo_linhas (
+  origem TEXT NOT NULL,               -- executada | pendente
+  ordem  INT NOT NULL,
+  os     TEXT NOT NULL, grupo TEXT, tipo TEXT,
+  qtd_poda NUMERIC, qtd_limpeza NUMERIC, qtd_estrutura NUMERIC,
+  PRIMARY KEY (origem, ordem)
+);
+
 CREATE TABLE configuracoes (                       -- alertas_config, app_rl_config, raio do Nix ...
   chave          TEXT PRIMARY KEY,
   valor          JSONB NOT NULL,
@@ -282,6 +291,9 @@ CREATE TABLE os (
   poste_loc             geometry(Point,4326),
   previsto_por_esquema  BOOLEAN,
   localidade_por_poste  BOOLEAN,
+  prioridade            TEXT,                        -- v3.21 criticidade do SGM (ALTA, URGENTE, EMERGENCIAL...)
+  num_obra              TEXT,                        -- v3.22 coluna "Num. Obra" da grid
+  recurso_mo            TEXT,                        -- v3.22 DE-PARA RECURSOS.MO 1 distintos da OS, juntos por " | "
   atualizado_em         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX os_loc_gix        ON os USING GIST (loc);

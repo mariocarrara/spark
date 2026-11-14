@@ -130,7 +130,7 @@ class HistoricoController extends Controller
 
         return ['id' => (string) $o->id, 'statusOS' => $o->status_os, 'tipoServico' => $o->tipo_servico, 'dataAbertura' => $d($o->data_abertura), 'dataExecucao' => $d($o->data_execucao),
             'alimentador' => $o->alimentador, 'localidade' => $o->localidade, 'trecho' => $o->trecho, 'posteId' => $o->poste_id, 'equipeId' => $o->equipe_id,
-            'descEsquema' => $o->desc_esquema, 'previstoPoda' => $num($o->previsto_poda), 'previstoLimpeza' => $num($o->previsto_limpeza),
+            'descEsquema' => $o->desc_esquema, 'numObra' => $o->num_obra, 'recursoMo' => $o->recurso_mo, 'previstoPoda' => $num($o->previsto_poda), 'previstoLimpeza' => $num($o->previsto_limpeza),
             'previstoEstrutura' => $num($o->previsto_estrutura), 'realizadoPoda' => $num($o->realizado_poda), 'realizadoLimpeza' => $num($o->realizado_limpeza),
             'realizadoEstrutura' => $num($o->realizado_estrutura), 'lat' => $o->lat === null ? null : (float) $o->lat, 'lng' => $o->lng === null ? null : (float) $o->lng,
             'aproximada' => (bool) $o->loc_aproximada];

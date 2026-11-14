@@ -42,13 +42,17 @@ class ImportadorGrids
     public function executado(string $grid, string $moExec, ?string $moPend, int $plano = 0, string $modo = 'substituir', ?string $usuario = null, string $arquivos = ''): array
     {
         try {
-            [$dicMoExec, $qtdMoExec] = $this->lerMO($moExec, 'MO_EXECUTADA');
+            [$dicMoExec, $qtdMoExec, $recMoExec, $linhasMoExec] = $this->lerMO($moExec, 'MO_EXECUTADA');
             $qtdMoPend = [];
+            $recMoPend = [];
             $temMoPend = false;
             if ($moPend) {
-                [, $qtdMoPend] = $this->lerMO($moPend, 'MO_PENDENTE');
+                [, $qtdMoPend, $recMoPend] = $this->lerMO($moPend, 'MO_PENDENTE');
                 $temMoPend = true;
             }
+            // v3.23 - linhas da MO guardadas para a Medicao de terceiros (o historico por plano nao mexe nelas)
+            $moLinhasGravadas = $plano <= 0 ? self::gravarMoLinhas('executada', $linhasMoExec) : null;
+            unset($linhasMoExec);
             $tabEW = $this->tabelaPrioridadeEW();
             $res = ['executadoTotal' => 0, 'executadoSemMO' => 0, 'executadoSemCoordenada' => 0, 'executadoPlotadas' => 0, 'previstoCalculado' => $temMoPend,
                 'executadoAproximadas' => 0, 'executadoSemPosicao' => 0, 'executadoSoPrevisto' => 0];
@@ -63,7 +67,7 @@ class ImportadorGrids
                 $res['podaLinearSemVao'] = true;
             }
             $regrasExec = Regras::ativas('executada');
-            $cols = ['Número OS', 'OSPrimária(int)', 'COORDENADA UTM X', 'COORDENADA UTM Y', 'OSFechada?', 'CodSetor', 'Localidade', 'DescEsquema', 'Observação', 'Observacao',
+            $cols = ['Num. Obra', 'Número OS', 'OSPrimária(int)', 'COORDENADA UTM X', 'COORDENADA UTM Y', 'OSFechada?', 'CodSetor', 'Localidade', 'DescEsquema', 'Observação', 'Observacao',
                 'Prioridade', 'Data de criação', 'Início Execução', 'Término Execução', 'TIPO_EQUIPE_EXEC', 'Complemento de Localização', 'CODIGO DA ARVORE', 'Trecho', 'protecao'];
             $novos = [];
             $acum = [];
@@ -163,6 +167,9 @@ class ImportadorGrids
                     'localizacao' => ['lat' => $ll['lat'] ?? null, 'lng' => $ll['lng'] ?? null, 'fonte' => 'GRID_EXECUTADO', 'aproximada' => false],
                     'descEsquema' => RegrasGrid::textoOuNulo($l['DescEsquema']),
                     'observacao' => $plano > 0 ? null : RegrasGrid::textoCorrigido($l['Observação'] ?: $l['Observacao']),
+                    // v3.21/v3.22 - criticidade do SGM, Nº da obra e Recurso (MO 1)
+                    'prioridade' => RegrasGrid::prioridadeSgm($l['Prioridade']), 'numObra' => RegrasGrid::textoOuNulo($l['Num. Obra']),
+                    'recursoMo' => $recMoExec[$osChave] ?? $recMoPend[$osPrimaria ?? $osChave] ?? null,
                 ] + self::quantidades($qPrev, $qReal);
                 $novos[$osChave] = $reg;
                 if ($ll) {
@@ -180,6 +187,9 @@ class ImportadorGrids
                 $res += $this->gravarLote('GRID_EXECUTADO', $novos);
             }
             $res['totalPlotadas'] = count($novos);
+            if ($moLinhasGravadas !== null) {
+                $res['moLinhasGravadas'] = $moLinhasGravadas;
+            }
 
             return $res;
         } finally {
@@ -192,11 +202,14 @@ class ImportadorGrids
     public function pendente(string $grid, string $moPend, ?string $moExec): array
     {
         try {
-            [$dicMoPend, $qtdMoPend] = $this->lerMO($moPend, 'MO_PENDENTE');
+            [$dicMoPend, $qtdMoPend, $recMoPend, $linhasMoPend] = $this->lerMO($moPend, 'MO_PENDENTE');
             $qtdMoExec = [];
+            $recMoExec = [];
             if ($moExec) {
-                [, $qtdMoExec] = $this->lerMO($moExec, 'MO_EXECUTADA');
+                [, $qtdMoExec, $recMoExec] = $this->lerMO($moExec, 'MO_EXECUTADA');
             }
+            $moLinhasGravadas = self::gravarMoLinhas('pendente', $linhasMoPend);   // v3.23
+            unset($linhasMoPend);
             $tabEW = $this->tabelaPrioridadeEW();
             $tabEsq = $this->tabelaEsquemas();
             $res = ['pendenteTotal' => 0, 'pendenteSemMO' => 0, 'pendentePrevistoPorEsquema' => 0, 'pendenteSemCoordenada' => 0, 'pendentePlotadas' => 0,
@@ -205,7 +218,7 @@ class ImportadorGrids
                 $res['podaLinearSemVao'] = true;
             }
             $regrasPend = Regras::ativas('pendente');
-            $cols = ['OSNumero', 'CodEsquema', 'COORDENADA UTM X', 'COORDENADA UTM Y', 'CodEstado', 'CodSetor', 'Localidade', 'DescEsquema', 'Observação', 'Observacao',
+            $cols = ['Num. Obra', 'OSNumero', 'CodEsquema', 'COORDENADA UTM X', 'COORDENADA UTM Y', 'CodEstado', 'CodSetor', 'Localidade', 'DescEsquema', 'Observação', 'Observacao',
                 'CodPrioridade', 'DataCriação', 'TIPO_EQUIPE_EXEC', 'Complemento de Localização', 'CODIGO DA ARVORE', 'Trecho', 'protecao'];
             $novos = [];
             $acum = [];
@@ -268,6 +281,8 @@ class ImportadorGrids
                     'descEsquema' => RegrasGrid::textoOuNulo($l['DescEsquema']),
                     'observacao' => RegrasGrid::textoCorrigido($l['Observação'] ?: $l['Observacao']),
                     'previstoPorEsquema' => $tipoEsq !== '',
+                    'prioridade' => RegrasGrid::prioridadeSgm($l['CodPrioridade']), 'numObra' => RegrasGrid::textoOuNulo($l['Num. Obra']),
+                    'recursoMo' => $recMoPend[$osChave] ?? $recMoExec[$osChave] ?? null,
                 ] + self::quantidades($qPrev, $qReal);
                 $novos[$osChave] = $reg;
                 if ($ll) {
@@ -282,6 +297,9 @@ class ImportadorGrids
             $this->avisar(['fase' => 'gravando', 'percentual' => 99]);
             $res += $this->gravarLote('GRID_PENDENTE', $novos);
             $res['totalPlotadas'] = count($novos);
+            if ($moLinhasGravadas !== null) {
+                $res['moLinhasGravadas'] = $moLinhasGravadas;
+            }
 
             return $res;
         } finally {
@@ -476,11 +494,16 @@ class ImportadorGrids
         });
     }
 
-    /** MO: [dicionario por OS (tipo do 1o apontamento), quantidades somadas por OS]. */
+    /**
+     * MO: [dicionario por OS (tipo do 1o apontamento), quantidades somadas por OS,
+     *      recursos (MO 1 distintos, ordenados, juntos por " | ") por OS, linhas cruas [os, grupo, tipo, qtdPoda, qtdLimpeza, qtdEstrutura]].
+     */
     private function lerMO(string $arq, string $rotulo): array
     {
         $dic = [];
         $qtd = [];
+        $rec = [];
+        $linhas = [];
         $leitor = new LeitorXlsx($arq, self::COLS_MO);
         foreach ($this->ler($leitor, $rotulo, 'mo') as $l) {
             $os = $l['Número OS'];
@@ -488,6 +511,13 @@ class ImportadorGrids
                 continue;
             }
             $k = trim($os);
+            $limpo = fn ($v) => ($x = trim((string) $v)) === '#N/A' ? '' : $x;
+            $mo1 = $limpo($l['DE-PARA RECURSOS.MO 1']);
+            if ($mo1 !== '') {
+                $rec[$k][$mo1] = true;
+            }
+            $linhas[] = [$k, $mo1, $limpo($l['DE-PARA RECURSOS.MO 2']), RegrasGrid::doubleSeguro($l['Qtd Poda']) ?? 0.0,
+                RegrasGrid::doubleSeguro($l['Qtd Limpeza (M²)']) ?? 0.0, RegrasGrid::doubleSeguro($l['Qtd Estrutura']) ?? 0.0];
             if (! isset($dic[$k])) {
                 $mo2 = $l['DE-PARA RECURSOS.MO 2'];
                 $dic[$k] = ['tipoServico' => (trim((string) $mo2) === '') ? $l['DE-PARA RECURSOS.MO 1'] : $mo2, 'detalhe' => $l['DE-PARA RECURSOS.MO 1']];
@@ -501,8 +531,36 @@ class ImportadorGrids
             }
         }
         $this->exigirColunas($leitor, ['Número OS'], $rotulo);
+        foreach ($rec as $k => $set) {
+            $lista = array_keys($set);
+            class_exists(\Collator::class) ? (new \Collator('pt_BR'))->sort($lista) : sort($lista, SORT_STRING | SORT_FLAG_CASE);
+            $rec[$k] = implode(' | ', $lista);
+        }
 
-        return [$dic, $qtd];
+        return [$dic, $qtd, $rec, $linhas];
+    }
+
+    /** v3.23 - Save-MoLinhas: SUBSTITUI as linhas da MO da origem (executada|pendente). Nunca derruba a importacao. -> quantas */
+    private static function gravarMoLinhas(string $origem, array $linhas): ?int
+    {
+        try {
+            DB::transaction(function () use ($origem, $linhas) {
+                DB::table('mo_linhas')->where('origem', $origem)->delete();
+                $r4 = fn ($v) => round((float) $v, 4);
+                foreach (array_chunk($linhas, 2000) as $i => $lote) {
+                    DB::table('mo_linhas')->insert(array_map(fn ($x, $j) => ['origem' => $origem, 'ordem' => $i * 2000 + $j, 'os' => $x[0], 'grupo' => $x[1], 'tipo' => $x[2],
+                        'qtd_poda' => $r4($x[3]), 'qtd_limpeza' => $r4($x[4]), 'qtd_estrutura' => $r4($x[5])], $lote, array_keys($lote)));
+                }
+                DB::table('configuracoes')->upsert([['chave' => 'mo_linhas_'.$origem, 'valor' => json_encode(['geradoEm' => now()->toIso8601String(), 'linhas' => count($linhas)]),
+                    'atualizado_em' => now()]], ['chave'], ['valor', 'atualizado_em']);
+            });
+
+            return count($linhas);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return null;
+        }
     }
 
     private function exigirColunas(LeitorXlsx $leitor, array $obrig, string $rotulo): void
@@ -706,7 +764,7 @@ class ImportadorGrids
         'data_abertura', 'data_execucao', 'data_prevista', 'alimentador', 'conjunto', 'protecao_id', 'trecho', 'localidade', 'desc_esquema', 'observacao',
         'loc', 'loc_fonte', 'loc_origem', 'loc_aproximada', 'previsto', 'realizado', 'previsto_poda', 'previsto_limpeza', 'previsto_estrutura',
         'realizado_poda', 'realizado_limpeza', 'realizado_estrutura', 'poste_id', 'poste_tipo', 'poste_area_local', 'poste_conjunto', 'poste_mun', 'poste_loc',
-        'previsto_por_esquema', 'localidade_por_poste', 'atualizado_em'];
+        'previsto_por_esquema', 'localidade_por_poste', 'prioridade', 'num_obra', 'recurso_mo', 'atualizado_em'];
 
     /** COPY das OS (formato do legado -> colunas). $plano > 0 grava no historico. */
     private function copiar(array $regs, int $plano = 0): void
@@ -732,7 +790,8 @@ class ImportadorGrids
                     self::nn($o['posteId'] ?? null), self::nn($o['posteTipo'] ?? null), self::nn($o['posteAreaLocal'] ?? null), self::nn($o['posteConjunto'] ?? null),
                     self::nn($o['posteMun'] ?? null), self::ponto($o['posteLat'] ?? null, $o['posteLng'] ?? null),
                     array_key_exists('previstoPorEsquema', $o) ? (bool) $o['previstoPorEsquema'] : null,
-                    array_key_exists('localidadePorPoste', $o) ? (bool) $o['localidadePorPoste'] : null, $agora];
+                    array_key_exists('localidadePorPoste', $o) ? (bool) $o['localidadePorPoste'] : null,
+                    self::nn($o['prioridade'] ?? null), self::nn($o['numObra'] ?? null), self::nn($o['recursoMo'] ?? null), $agora];
                 if ($plano > 0) {
                     $v[] = $plano;
                 }

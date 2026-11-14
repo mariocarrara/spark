@@ -20,7 +20,7 @@ class Programacoes
     /** Campos da copia da OS aceitos do navegador (Get-OsSnapMesclado). */
     private const CAMPOS_SNAP = ['id', 'origem', 'statusOS', 'tipoServico', 'tipoEquipeNecessaria', 'tipoEquipeExec', 'trecho', 'osPrimaria', 'alimentador',
         'conjunto', 'protecaoId', 'localidade', 'dataAbertura', 'dataExecucao', 'previsto', 'realizado', 'previstoPoda', 'previstoLimpeza', 'previstoEstrutura',
-        'realizadoPoda', 'realizadoLimpeza', 'realizadoEstrutura', 'observacao', 'descEsquema', 'statusBase'];
+        'realizadoPoda', 'realizadoLimpeza', 'realizadoEstrutura', 'observacao', 'descEsquema', 'prioridade', 'numObra', 'recursoMo', 'statusBase'];
 
     /** campo do front => coluna (texto simples) */
     public const TEXTO = ['protecaoId' => 'protecao_id', 'alimentador' => 'alimentador', 'localidade' => 'localidade', 'regional' => 'regional', 'polo' => 'polo',
