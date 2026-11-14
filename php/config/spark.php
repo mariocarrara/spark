@@ -17,7 +17,10 @@ return [
     'senha_min' => (int) env('SPARK_SENHA_MIN', 8),
 
     // Modulos e acoes da matriz de permissoes (iguais ao legado).
-    'modulos' => ['manutencao', 'produtividade', 'metas', 'programacao', 'prefeituras', 'gestaoBases', 'alertas', 'prioridade', 'nix', 'usuarios'],
+    'modulos' => ['manutencao', 'produtividade', 'metas', 'programacao', 'prefeituras', 'gestaoBases', 'alertas', 'prioridade', 'nix', 'usuarios',
+        'geral', 'historico', 'medicao', 'regras', 'importacao'],
+    // v3.26 - caixas "(menu)": Visualizar com 3 estados (marcada, desmarcada, nunca mexida = padrao do front MODULOS_MENU)
+    'modulos_menu' => ['geral', 'historico', 'medicao', 'regras', 'importacao'],
     'acoes' => ['visualizar', 'criar', 'editar', 'excluirStatus', 'importar'],
     // Perfis-modelo (Get-PerfilModelo do legado): matriz inicial ao aprovar/liberar um usuario.
     // "alertas.visualizar" nao existe no legado: segue manutencao.visualizar (regra alertasVisivel do front).

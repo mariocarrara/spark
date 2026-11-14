@@ -50,6 +50,9 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "routes\nix.ps1")
 . (Join-Path $PSScriptRoot "routes\historico.ps1")
 . (Join-Path $PSScriptRoot "routes\apprl.ps1")
+. (Join-Path $PSScriptRoot "routes\medicao.ps1")
+. (Join-Path $PSScriptRoot "routes\regras.ps1")
+. (Join-Path $PSScriptRoot "lib\Regras.ps1")
 
 # Resolve o usuário logado a partir do token de sessão (header
 # "Authorization: Bearer <token>", criado em POST /api/auth/login). Sem
@@ -701,6 +704,8 @@ while ($listener.IsListening) {
             "ajustes"      { Invoke-AjustesRoute -Method $request.HttpMethod -Segments $resto -Query $query -Body $body -Usuario $usuario }
             "rank"         { Invoke-RankRoute -Method $request.HttpMethod -Segments $resto -Query $query -Body $body -Usuario $usuario }
             "nix"          { Invoke-NixRoute -Method $request.HttpMethod -Segments $resto -Query $query -Body $body -Usuario $usuario }
+            "regras"       { Invoke-RegrasRoute -Method $request.HttpMethod -Segments $resto -Query $query -Body $body -Usuario $usuario }
+            "medicao"      { Invoke-MedicaoRoute -Method $request.HttpMethod -Segments $resto -Query $query -Body $body -Usuario $usuario }
             "apprl"        { Invoke-AppRlRoute -Method $request.HttpMethod -Segments $resto -Query $query -Body $body -Usuario $usuario }
             "historico"    { Invoke-HistoricoRoute -Method $request.HttpMethod -Segments $resto -Query $query -Body $body -Usuario $usuario }
             "feriados"     { Invoke-FeriadosRoute -Method $request.HttpMethod -Segments $resto -Query $query -Body $body -Usuario $usuario }

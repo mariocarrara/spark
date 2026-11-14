@@ -403,7 +403,7 @@ function Get-ResumoKmDeRede {
 $Script:VeraMapaPontosCache = $null
 $Script:VeraMapaPontosDigital = $null
 function Get-PontosVeraMapa {
-    <# v2.12.0 - lista [lat, lng, idVera, especie] de cada arvore da VERA com
+    <# v2.12.0 - lista [lat, lng, idVera, especie, alimentador, cidade] de cada arvore da VERA com
        coordenada, pronta pra mandar ao mapa. Fica em memoria enquanto o
        model/vera.json nao mudar (impressao digital = tamanho + data do
        arquivo; qualquer import, edicao ou exclusao da VERA muda isso e a
@@ -420,7 +420,7 @@ function Get-PontosVeraMapa {
     $pontos = New-Object System.Collections.Generic.List[object]
     foreach ($a in @(Read-JsonModel -Entity "vera")) {
         if ($null -eq $a.lat -or $null -eq $a.lng) { continue }
-        $pontos.Add(@($a.lat, $a.lng, $a.idVera, $a.especie))
+        $pontos.Add(@($a.lat, $a.lng, $a.idVera, $a.especie, $a.alimentador, $a.cidade))
     }
     $Script:VeraMapaPontosCache = $pontos
     $Script:VeraMapaPontosDigital = $digital

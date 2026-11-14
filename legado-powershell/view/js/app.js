@@ -169,7 +169,7 @@ const state = {
     { id:"u5", nome:"Davi Exemplo", email:"davi.exemplo@exemplo.com.br", perfilBase:"Consulta", statusConta:"Pendente" },
   ],
 
-  MODULOS: ["manutencao","produtividade","metas","programacao","prefeituras","gestaoBases","alertas","prioridade","nix","usuarios"],
+  MODULOS: ["geral","manutencao","produtividade","alertas","programacao","prioridade","nix","historico","medicao","regras","prefeituras","importacao","gestaoBases","metas","usuarios"],
   ACOES: ["visualizar","criar","editar","excluirStatus","importar"],
 
   perfisModelo: {
@@ -310,7 +310,7 @@ function uid(prefix){ return prefix+"-"+Math.random().toString(36).slice(2,8); }
    vê tudo (minhaPermissao já tem esse bypass, espelhando Test-Permissao
    no Controller). */
 const ROUTES = [
-  { key:"geral", label:"Visão Geral", icon:"home", title:"Visão Geral", sub:"Resumo do dia em todos os módulos", permissao:null },
+  { key:"geral", label:"Visão Geral", icon:"home", title:"Visão Geral", sub:"Resumo do dia em todos os módulos", permissao:{modulo:"geral", acao:"visualizar"} },
   { key:"manutencao", label:"Mapa de Manutenção", icon:"map", title:"Mapa de Manutenção", sub:"OSs de poda, estrutura e limpeza de faixa", permissao:{modulo:"manutencao", acao:"visualizar"} },
   { key:"produtividade", label:"Produtividade", icon:"chart", title:"Produtividade das Equipes", sub:"Executado x meta, por dia", permissao:{modulo:"produtividade", acao:"visualizar"} },
   { key:"alertas", label:"Alertas", icon:"warn", title:"Alertas", sub:"OS próximas, outliers, recurso zero e OS em APP/RL", permissao:{modulo:"alertas", acao:"visualizar"} },
@@ -318,12 +318,14 @@ const ROUTES = [
   { key:"prioridade", label:"Prioridade da programação", icon:"prio", title:"Prioridade da programação", sub:"Lista da engenharia x pendência, mudanças entre listas e aderência", permissao:{modulo:"prioridade", acao:"visualizar"} },
   { key:"nix", label:"Pontos Nix", icon:"warn", title:"Pontos Nix", sub:"Onde a rede parou (Nix) e as OS em volta: executadas, programadas e pendentes", permissao:{modulo:"nix", acao:"visualizar"} },
   // v3.11.0 - consulta dos planos fechados (podas executadas de anos anteriores)
-  { key:"historico", label:"Histórico de Podas", icon:"calendar", title:"Histórico de Podas", sub:"Podas executadas dos planos anteriores (01/nov a 31/out), por plano", permissao:{modulo:"manutencao", acao:"visualizar"} },
+  { key:"historico", label:"Histórico de Podas", icon:"calendar", title:"Histórico de Podas", sub:"Podas executadas dos planos anteriores (01/nov a 31/out), por plano", permissao:{modulo:"historico", acao:"visualizar"} },
+  // v3.24.0 - Medição de terceiros: só Administrador
+  { key:"medicao", label:"Medição de terceiros", icon:"chart", title:"Medição de terceiros", sub:"Tudo o que as equipes terceiras executaram, por recurso — base para a medição", permissao:{modulo:"medicao", acao:"visualizar"} },
   { key:"prefeituras", label:"Envio às Prefeituras", icon:"mail", title:"Envio às Prefeituras", sub:"Conformidade ANEEL — relatório semanal", permissao:{modulo:"prefeituras", acao:"visualizar"} },
-  { key:"importacao", label:"Importação de Bases", icon:"upload", title:"Importação de Bases", sub:"Validação de cabeçalho antes da carga", permissao:{modulos:["manutencao","metas","prefeituras","prioridade"], acao:"importar"} },
+  { key:"importacao", label:"Importação de Bases", icon:"upload", title:"Importação de Bases", sub:"Validação de cabeçalho antes da carga", permissao:{modulo:"importacao", acao:"visualizar"} },
   { key:"cadastros", label:"Gestão de Bases", icon:"filter", title:"Gestão de Bases", sub:"Equipes, Metas, Vão, Proteção, VERA, listas (Plano, Equipe necessária, Justificativas) e Camadas de rede", permissao:{modulo:"gestaoBases", acao:"visualizar"} },
   // v3.10.0 - menu Configuração: Alertas (parâmetros), Pontos Nix e Usuários & Permissões numa tela só (abas)
-  { key:"configuracao", label:"Configuração", icon:"gear", title:"Configuração", sub:"Parâmetros dos alertas, pontos Nix, APP/RL e usuários & permissões", permissao:{qualquer:[{modulo:"alertas",acao:"visualizar"},{modulo:"nix",acao:"importar"},{modulo:"usuarios",acao:"editar"}]} },
+  { key:"configuracao", label:"Configuração", icon:"gear", title:"Configuração", sub:"Alertas, pontos Nix, APP/RL, regras de importação e usuários & permissões", permissao:{qualquer:[{modulo:"alertas",acao:"visualizar"},{modulo:"nix",acao:"importar"},{modulo:"regras",acao:"visualizar"},{modulo:"usuarios",acao:"editar"}]} },
 ];
 
 function rotaVisivel(r){
@@ -340,7 +342,7 @@ function renderNav(){
   const nav = document.getElementById("navList");
   nav.innerHTML = rotasVisiveis().map(r=>`
     <button class="nav-item" data-route="${r.key}" onclick="goTo('${r.key}')">
-      ${ic(r.icon)}<span>${r.label}</span>
+      ${ic(r.icon)}<span>${r.label}</span>${avisoBadgeHtml(r.key)}
     </button>`).join("");
 }
 
@@ -2182,7 +2184,7 @@ function grupoCamadasHtml(chave, titulo, corpo){
 function camadaItemHtml(c){
   return `
             <label class="breaker" data-layer="${c.id}">
-              <span class="breaker-led${(c.id==="ativos"||EQUIP_CFG[c.id])?" tri":""}" style="color:${c.cor}"></span>
+              <span class="breaker-led${c.id==="vera"?" arv":c.id==="trafos"?" tri":((c.id==="ativos"||EQUIP_CFG[c.id])?" quad":"")}" style="color:${c.cor}"></span>
               <span class="breaker-name">${c.label}</span>
               ${c.alimentador ? `<span class="breaker-inline-multihost" id="${c.id}AlimentadorMultiHost" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"></span>` : ""}
               <span class="breaker-switch"><input type="checkbox" ${c.checked?"checked":""}></span>
@@ -2193,7 +2195,7 @@ function camadaItemHtml(c){
             ${c.id==="ativos" ? `<div id="ativosBox" style="display:none; margin:-2px 0 8px 26px;"><div id="ativosTipos" style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:4px;"></div><p id="ativosNota" style="color:var(--muted); font-size:11.5px; margin:0;"></p></div>` : ""}
             ${EQUIP_CFG[c.id] ? `<p id="equipNota_${c.id}" style="display:none; color:var(--muted); font-size:11.5px; margin:-2px 0 8px 26px;"></p>` : ""}
             ${c.id==="trafos" ? `<label style="display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--muted); margin:-2px 0 8px 26px; cursor:pointer;"><input type="checkbox" ${equipRotulos?"checked":""} onchange="setEquipRotulos(this.checked)"> Rótulos nos equipamentos (código | kVA ou elo), a partir do zoom ${EQUIP_ROTULO_ZOOM}</label>` : ""}
-            ${c.id==="protecoes" ? `<p style="font-size:11px; color:var(--muted); margin:-4px 0 8px 26px; line-height:1.6;"><span style="color:${EQUIP_PROT_COR["22"]}">▲</span> Fusível · <span style="color:${EQUIP_PROT_COR["27"]}">▲</span> Religador · <span style="color:${EQUIP_PROT_COR["19"]}">▲</span> Chave faca · <span style="color:${EQUIP_PROT_COR["29"]}">▲</span> Seccionalizador · <span style="color:#B42318">▲</span> Normal aberta</p>` : ""}`;
+            ${c.id==="protecoes" ? `<p style="font-size:11px; color:var(--muted); margin:-4px 0 8px 26px; line-height:1.6;"><span style="color:${EQUIP_PROT_COR["22"]}">■</span> Fusível · <span style="color:${EQUIP_PROT_COR["27"]}">■</span> Religador · <span style="color:${EQUIP_PROT_COR["19"]}">■</span> Chave faca · <span style="color:${EQUIP_PROT_COR["29"]}">■</span> Seccionalizador · <span style="color:#B42318">■</span> Normal aberta</p>` : ""}`;
 }
 function viewManutencao(){
   const camadas = [
@@ -2284,9 +2286,9 @@ function viewManutencao(){
           // v3.13.0 - filtros em grupos que abrem/fecham (como as Camadas): Equipe / Datas / Sistemas / Localização
           const ex = filtrosExtra || {};
           const nExtra = ch => (ex[ch] && ex[ch].size) ? 1 : 0;
-          const nEquipe = (filtroEquipe.size>0?1:0) + (filtroTipoEquipeExec.size>0?1:0) + nExtra("tipoEquipeNecessaria");
+          const nEquipe = (filtroEquipe.size>0?1:0) + (filtroTipoEquipeExec.size>0?1:0) + nExtra("tipoEquipeNecessaria") + nExtra("departamentoEquipe");
           const nDatas = ((filtroExecucaoDe||filtroExecucaoAte)?1:0) + ((filtroAberturaDe||filtroAberturaAte)?1:0) + (histMapa.sel.size>0?1:0);
-          const nSist = (filtroPrioridadeEW!==null?1:0) + (filtroOrigem?1:0);
+          const nSist = (filtroPrioridadeEW!==null?1:0) + (filtroOrigem?1:0) + nExtra("recursoMo") + nExtra("numObra");
           const nLoc = (filtroPolo.size>0?1:0) + (filtroRegional.size>0?1:0) + (filtroTrecho.size>0?1:0) + ["alimentador","zona","conjunto","localidade","prioridade"].reduce((t,c)=>t+nExtra(c),0);
           const tit = (nome, n) => `${nome}${n ? ` <span class="grp-badge">${n}</span>` : ""}`;
           const grupo = (chave, titulo, corpo) => `<details class="camadas-sub" ${mapaFiltroGrupos[chave]?"open":""} ontoggle="mapaFiltroGrupos['${chave}']=this.open">
@@ -2295,7 +2297,7 @@ function viewManutencao(){
             ${multiComboHtml("f_equipe","Equipe executora", equipes.map(eq=>({v:eq,t:eq})), filtroEquipe, "toggleFiltroEquipe", "limparFiltroEquipe", "Todas")}
             ${equipes.length===0 ? `<p style="color:var(--muted); font-size:11.5px; margin:-6px 0 8px;">Nenhuma equipe identificada ainda nas OS importadas.</p>` : ""}
             ${filtroTipoEquipeExecHtml()}
-            ${filtrosExtraHtml(["tipoEquipeNecessaria"])}`;
+            ${filtrosExtraHtml(["departamentoEquipe","tipoEquipeNecessaria"])}`;
           const gDatas = `
             ${histMapaPlanoHtml()}
             <div class="field">
@@ -2330,13 +2332,14 @@ function viewManutencao(){
                 <button class="tab ${filtroOrigem==='SGM'?'active':''}" onclick="setFiltroOrigem('SGM')">SGM</button>
                 <button class="tab ${filtroOrigem==='SIGOD'?'active':''}" onclick="setFiltroOrigem('SIGOD')">SIGOD</button>
               </div>
-            </div>`;
+            </div>
+            ${filtrosExtraHtml(["recursoMo","numObra"])}`;
           const gLoc = `
             ${multiComboHtml("f_polo","Polo", polos.map(x=>({v:x,t:x})), filtroPolo, "toggleFiltroPolo", "limparFiltroPolo", "Todos")}
             ${polos.length===0 ? `<p style="color:var(--muted); font-size:11.5px; margin:-6px 0 8px;">Nenhum alimentador cruzado com Polo ainda — importe a Proteção e o Vão (nessa tela de Importação de Bases) pra esse filtro aparecer.</p>` : ""}
             ${multiComboHtml("f_regional","Regional", regionais.map(x=>({v:x,t:x})), filtroRegional, "toggleFiltroRegional", "limparFiltroRegional", "Todas")}
             ${filtroTrechoHtml()}
-            ${filtrosExtraHtml(null, ["tipoEquipeNecessaria"])}`;
+            ${filtrosExtraHtml(null, ["tipoEquipeNecessaria","departamentoEquipe","recursoMo","numObra"])}`;
           return filtroServicosHtml() + grupo("localizacao", tit("Localização", nLoc), gLoc) + grupo("equipe", tit("Equipe", nEquipe), gEquipe) + grupo("datas", tit("Datas", nDatas), gDatas) + grupo("sistemas", tit("Sistemas", nSist), gSist);
         })()}
         <button class="btn btn-ghost" style="padding:5px 10px; font-size:12px; margin-top:6px;" onclick="limparFiltrosExtra()">${ic("close")||"×"} Limpar todos os filtros</button>
@@ -2679,7 +2682,7 @@ function osFiltradas(){
     // v2.15.47: vários termos de uma vez, separados por vírgula, ponto e vírgula, "|", quebra de linha ou " e " (ex.: A-A1 e E-A2). Vale se a OS bater com QUALQUER um.
     const termos = buscaOSTermos(filtroBuscaOS);
     lista = lista.filter(o => {
-      const campos = [o.id, o.alimentador, o.tipoServico, o.protecaoId, o.trecho, o.statusOS, o.origem, o.equipeId, o.descEsquema, o.observacao].map(v=>String(v||"").toLowerCase());
+      const campos = [o.id, o.alimentador, o.tipoServico, o.protecaoId, o.trecho, o.statusOS, o.origem, o.equipeId, o.descEsquema, o.observacao, o.numObra, o.recursoMo].map(v=>String(v||"").toLowerCase());
       return termos.some(q => campos.some(c => c.includes(q)));
     });
   }
@@ -2687,7 +2690,7 @@ function osFiltradas(){
     const alvo = filtrosExtra[ch];
     if(alvo && alvo.size!==undefined){     // v3.2.2: seleção múltipla (Set)
       if(!alvo.size) return;
-      lista = lista.filter(o => alvo.has(valorFiltroExtraOS(o, ch)));
+      lista = lista.filter(o => ch==="recursoMo" ? valoresFiltroExtraOS(o, ch).some(v=>alvo.has(v)) : alvo.has(valorFiltroExtraOS(o, ch)));
       return;
     }
     const v = String(alvo).toLowerCase();
@@ -2718,10 +2721,13 @@ function zonaDaOS(o){
 const FILTROS_EXTRA_DEF = [
   { chave:"alimentador",         rotulo:"Alimentador",            tipo:"select" },   // v3.14.0 - o alimentador carimbado nas OS
   { chave:"zona",                 rotulo:"Zona",                   tipo:"select" },
+  { chave:"departamentoEquipe",   rotulo:"Departamento da equipe",  tipo:"select" },   // v3.19.0 - departamento do cadastro da equipe executora
   { chave:"tipoEquipeNecessaria", rotulo:"Tipo equipe necessária", tipo:"select" },
   { chave:"conjunto",             rotulo:"Conjunto",               tipo:"select" },
   { chave:"localidade",           rotulo:"Localidade",             tipo:"select" },
-  { chave:"prioridade",           rotulo:"Prioridade",             tipo:"select" },
+  { chave:"prioridade",           rotulo:"Criticidade (SGM)",      tipo:"select" },
+  { chave:"recursoMo",            rotulo:"Recurso (MO 1)",         tipo:"select" },   // v3.22.0 - DE-PARA RECURSOS.MO 1 (uma OS pode ter vários)
+  { chave:"numObra",              rotulo:"Nº da obra",             tipo:"select" },   // v3.22.0 - Num. Obra das grids
   // v2.15.47: Alimentador / Proteção / OS saíram daqui (a busca do mapa já filtra por eles, e aceita vários de uma vez)
 ];
 /* v2.13.32 - "Tipo de equipe" vindo da coluna TIPO_EQUIPE_EXEC das grids do SGM
@@ -2825,16 +2831,26 @@ function filtroTipoEquipeExecHtml(){
 let filtrosExtra = {};
 let _filtrosExtraCache = null, _filtrosExtraFonte = null;
 /* valor de uma OS num filtro extra; "conjunto" vem da base Conjuntos (cruzamento pelo alimentador) */
+function departamentoDaEquipeOS(o){
+  const e = o && o.equipeId && typeof equipeInfo==="function" ? equipeInfo(o.equipeId) : null;
+  return (e && e.departamento) ? String(e.departamento).trim() : "";
+}
+/* v3.22.0 - valores de uma OS para um filtro: "recursoMo" guarda vários recursos juntos ("A | B"), os demais têm um só. */
+function valoresFiltroExtraOS(o, chave){
+  const v = valorFiltroExtraOS(o, chave);
+  if(v==="") return [];
+  return chave==="recursoMo" ? v.split("|").map(x=>x.trim()).filter(Boolean) : [v];
+}
 function valorFiltroExtraOS(o, chave){
-  const v = chave==="conjunto" ? conjuntoDaOS(o) : (chave==="zona" ? zonaDaOS(o) : o[chave]);
+  const v = chave==="conjunto" ? conjuntoDaOS(o) : (chave==="zona" ? zonaDaOS(o) : (chave==="departamentoEquipe" ? departamentoDaEquipeOS(o) : o[chave]));
   return (v===undefined || v===null) ? "" : String(v).trim();
 }
-let _filtrosExtraConj = null;
+let _filtrosExtraConj = null, _filtrosExtraEq = null;
 function valoresDistintosOS(chave){
-  if(_filtrosExtraFonte !== osMapaBase() || _filtrosExtraConj !== state.conjuntos){ _filtrosExtraCache = {}; _filtrosExtraFonte = osMapaBase(); _filtrosExtraConj = state.conjuntos; }
+  if(_filtrosExtraFonte !== osMapaBase() || _filtrosExtraConj !== state.conjuntos || _filtrosExtraEq !== state.equipes){ _filtrosExtraCache = {}; _filtrosExtraFonte = osMapaBase(); _filtrosExtraConj = state.conjuntos; _filtrosExtraEq = state.equipes; }
   if(_filtrosExtraCache[chave]) return _filtrosExtraCache[chave];
   const set = new Set();
-  osMapaBase().forEach(o=>{ const v = valorFiltroExtraOS(o, chave); if(v!==undefined && v!==null && String(v).trim()!=="") set.add(String(v).trim()); });
+  osMapaBase().forEach(o=>{ valoresFiltroExtraOS(o, chave).forEach(v=>{ if(v!==undefined && v!==null && String(v).trim()!=="") set.add(String(v).trim()); }); });
   return (_filtrosExtraCache[chave] = Array.from(set).sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base",numeric:true})));
 }
 function setFiltroExtra(chave, v){
@@ -3664,7 +3680,7 @@ function atualizarTabelaOS(){
 }
 /* v2.13.33 - ordenação da tabela de OS (conjunto inteiro, não só a página) */
 let osOrdem = null;   // { campo, dir }
-const OS_ORDEM_CAMPOS = { descesq:o=>o.descEsquema||"", obs:o=>o.observacao||"", status:o=>o.statusOS, id:o=>o.id, tipoeq:o=>o.tipoEquipeExec||"", origem:o=>o.origem, servico:o=>o.tipoServico, equipe:o=>o.equipeId, alimentador:o=>o.alimentador, conjunto:o=>conjuntoDaOS(o), protecao:o=>o.protecaoId, trecho:o=>o.trecho, localidade:o=>o.localidade||o.conjunto||"", polo:o=>municipioDaOS(o)||"", regional:o=>regionalDaOS(o)||"", lat:o=>(typeof o.lat==="number"?o.lat:""), lng:o=>(typeof o.lng==="number"?o.lng:""), abertura:o=>o.dataAbertura, execucao:o=>o.dataExecucao, previsto:o=>qtdOS(o,"prev"), realizado:o=>qtdOS(o,"real") , prevpoda:o=>osQtdServico(o,"poda","prev"), realpoda:o=>osQtdServico(o,"poda","real"), prevestr:o=>osQtdServico(o,"estrutura","prev"), realestr:o=>osQtdServico(o,"estrutura","real"), prevlimp:o=>osQtdServico(o,"faixa","prev"), reallimp:o=>osQtdServico(o,"faixa","real") };
+const OS_ORDEM_CAMPOS = { recmo:o=>o.recursoMo||"", obra:o=>o.numObra||"", critic:o=>criticidadeOrdem(o), descesq:o=>o.descEsquema||"", obs:o=>o.observacao||"", status:o=>o.statusOS, id:o=>o.id, tipoeq:o=>o.tipoEquipeExec||"", origem:o=>o.origem, servico:o=>o.tipoServico, equipe:o=>o.equipeId, alimentador:o=>o.alimentador, conjunto:o=>conjuntoDaOS(o), protecao:o=>o.protecaoId, trecho:o=>o.trecho, localidade:o=>o.localidade||o.conjunto||"", polo:o=>municipioDaOS(o)||"", regional:o=>regionalDaOS(o)||"", lat:o=>(typeof o.lat==="number"?o.lat:""), lng:o=>(typeof o.lng==="number"?o.lng:""), abertura:o=>o.dataAbertura, execucao:o=>o.dataExecucao, previsto:o=>qtdOS(o,"prev"), realizado:o=>qtdOS(o,"real") , prevpoda:o=>osQtdServico(o,"poda","prev"), realpoda:o=>osQtdServico(o,"poda","real"), prevestr:o=>osQtdServico(o,"estrutura","prev"), realestr:o=>osQtdServico(o,"estrutura","real"), prevlimp:o=>osQtdServico(o,"faixa","prev"), reallimp:o=>osQtdServico(o,"faixa","real") };
 function ordenarOS(campo){
   if(osOrdem && osOrdem.campo===campo){ osOrdem = osOrdem.dir===1 ? { campo, dir:-1 } : null; }
   else osOrdem = { campo, dir:1 };
@@ -3686,6 +3702,15 @@ function osTotaisServicos(lista){
   return t;
 }
 /* v3.10.7 - colunas opcionais da grid (status e OS são fixas). "serv" = grupo Previsto/Realizado de um tipo de serviço. */
+/* v3.21.0 - criticidade da OS no SGM (coluna Prioridade/CodPrioridade das grids): EMERGENCIAL > URGENTE > ALTA > demais */
+function criticidadeOrdem(o){
+  const p = String(o && o.prioridade || "").toUpperCase();
+  return p==="EMERGENCIAL" ? 1 : p==="URGENTE" ? 2 : p==="ALTA" ? 3 : p ? 4 : 9;
+}
+function criticidadeClasse(p){
+  p = String(p||"").toUpperCase();
+  return p==="EMERGENCIAL" ? "bad" : p==="URGENTE" ? "warn" : p==="ALTA" ? "info" : "";
+}
 const OS_COLS = [
   { id:"tipoeq", rot:"Tipo equipe", ord:"tipoeq", td:o=>`<td>${o.tipoEquipeExec ? escapeHtml(o.tipoEquipeExec) : `<span style="color:var(--muted);">—</span>`}</td>` },
   { id:"poda", rot:"Poda (previsto / realizado)", serv:"poda" },
@@ -3704,6 +3729,9 @@ const OS_COLS = [
   { id:"lat", rot:"Latitude", ord:"lat", td:o=>`<td class="mono">${typeof o.lat==="number" ? o.lat.toFixed(6) : ""}</td>` },
   { id:"lng", rot:"Longitude", ord:"lng", td:o=>`<td class="mono">${typeof o.lng==="number" ? o.lng.toFixed(6) : ""}</td>` },
   { id:"origem", rot:"Origem", ord:"origem", td:o=>`<td>${escapeHtml(o.origem)}</td>` },
+  { id:"recmo", rot:"Recurso (MO 1)", ord:"recmo", td:o=>`<td class="os-texto" title="${escapeHtml(o.recursoMo||"")}">${escapeHtml(o.recursoMo||"")}</td>` },
+  { id:"obra", rot:"Nº da obra", ord:"obra", td:o=>`<td class="mono">${escapeHtml(o.numObra||"")}</td>` },
+  { id:"critic", rot:"Criticidade (SGM)", ord:"critic", td:o=>`<td>${o.prioridade ? `<span class="pill ${criticidadeClasse(o.prioridade)}">${escapeHtml(o.prioridade)}</span>` : `<span style="color:var(--muted);">—</span>`}</td>` },
   { id:"descesq", rot:"Descrição do esquema", ord:"descesq", td:o=>`<td class="os-texto" title="${escapeHtml(o.descEsquema||"")}">${escapeHtml(o.descEsquema||"")}</td>` },
   { id:"obs", rot:"Observação", ord:"obs", td:o=>`<td class="os-texto" title="${escapeHtml(o.observacao||"")}">${escapeHtml(o.observacao||"")}</td>` },
 ];
@@ -3947,6 +3975,17 @@ function auditoriaPaginaHtml(){
     <div id="audTabela">${audTabelaHtml()}</div>`;
 }
 
+/* v3.17.0 - Excel da grid: Própria/Terceira e Programada/Plantão. SIGOD = sempre Própria e Plantão; SGM = Programada e
+   Própria/Terceira vem do cadastro da equipe (campo proprioTerceiro; equipe sem cadastro fica em branco). */
+function tipoManutencaoDaOS(o){ return String(o.origem||"").toUpperCase()==="SIGOD" ? "Plantão" : "Programada"; }
+function propTercDaOS(o){
+  if(String(o.origem||"").toUpperCase()==="SIGOD") return "Própria";
+  const e = o.equipeId && typeof equipeInfo==="function" ? equipeInfo(o.equipeId) : null;
+  const v = String((e && e.proprioTerceiro) || "").trim();
+  if(!v) return "";
+  const n = v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  return n.startsWith("prop") ? "Própria" : n.startsWith("terc") ? "Terceira" : v;
+}
 function exportarOSParaExcel(){
   if(typeof XLSX === "undefined"){ toast("Biblioteca de planilha (XLSX) não carregada."); return; }
   const lista = osFiltradas();
@@ -3957,6 +3996,8 @@ function exportarOSParaExcel(){
     "Origem": o.origem,
     "Serviço": servicoTextoOS(o),
     "Equipe executora": o.equipeId || "",
+    "Própria/Terceira": propTercDaOS(o),
+    "Tipo de manutenção": tipoManutencaoDaOS(o),
     "Departamento da equipe": (typeof equipeInfo==="function" && o.equipeId && equipeInfo(o.equipeId) && equipeInfo(o.equipeId).departamento) || "",
     "Equipe necessária": o.tipoEquipeNecessaria || "",
     "Tipo de equipe": o.tipoEquipeExec || "",
@@ -3971,6 +4012,9 @@ function exportarOSParaExcel(){
     "Localidade": o.localidade || o.conjunto || "",
     "Polo": municipioDaOS(o) || "",
     "Regional": regionalDaOS(o) || "",
+    "Criticidade (SGM)": o.prioridade || "",
+    "Recurso (MO 1)": o.recursoMo || "",
+    "Nº da obra": o.numObra || "",
     "Prioridade EW": o.prioridadeEW ? "Sim" : "Não",
     "Abertura": o.dataAbertura ? fmtDate(o.dataAbertura) : "",
     "Execução": o.dataExecucao ? fmtDate(o.dataExecucao) : "",
@@ -4020,6 +4064,59 @@ async function carregarRedeMt(selecionados){
    primeira vez que a camada é ligada (ver o listener em initMapaManutencao)
    e fica guardada depois — desligar/religar o breaker só esconde/mostra a
    layer já carregada, sem buscar de novo. */
+/* v3.32.0 - VERA por área visível: com o estado todo aberto, 141 mil árvores travavam o mapa. Agora só aparecem do zoom
+   VERA_ZOOM_MIN em diante e só as da tela (com folga), no máximo VERA_MAX_DESENHO por vez. */
+const VERA_ZOOM_MIN = 12, VERA_MAX_DESENHO = 5000, VERA_CELULA = 0.02;
+let mapaVeraPts = null, mapaVeraGrade = null, mapaVeraDesenhado = null, mapaVeraNaTela = [];
+const VERA_TOQUE_PX = 20;   // distância de toque: quão perto da árvore (em pixels) o clique ainda a seleciona
+function veraAtualizarViewport(forcar){
+  const layer = mapaCamadaLayersAtual && mapaCamadaLayersAtual.vera;
+  const notaEl = document.getElementById("veraNota");
+  if(!layer || !mapManutencao || !mapaVeraGrade || !mapManutencao.hasLayer(layer)) return;
+  const z = Math.round(mapManutencao.getZoom()), vis = mapManutencao.getBounds();
+  const tot = mapaVeraPts.length.toLocaleString("pt-BR");
+  if(z < VERA_ZOOM_MIN){
+    layer.clearLayers(); mapaVeraDesenhado = null; mapaVeraNaTela = [];
+    if(notaEl) notaEl.textContent = `${tot} árvore(s) carregada(s) — aproxime o mapa (zoom ${VERA_ZOOM_MIN} ou mais, agora ${z}) para vê-las.`;
+    return;
+  }
+  if(!forcar && mapaVeraDesenhado && mapaVeraDesenhado.contains(vis)) return;
+  const coletar = b=>{
+    const out = [], i0 = Math.floor(b.getSouth()/VERA_CELULA), i1 = Math.floor(b.getNorth()/VERA_CELULA), j0 = Math.floor(b.getWest()/VERA_CELULA), j1 = Math.floor(b.getEast()/VERA_CELULA);
+    for(let i=i0; i<=i1; i++) for(let j=j0; j<=j1; j++){
+      const c = mapaVeraGrade.get(i + "|" + j); if(!c) continue;
+      for(let k=0; k<c.length; k++){ const pt = c[k]; if(pt[0] >= b.getSouth() && pt[0] <= b.getNorth() && pt[1] >= b.getWest() && pt[1] <= b.getEast()) out.push(pt); }
+    }
+    return out;
+  };
+  let area = vis.pad(0.3), lista = coletar(area);
+  if(lista.length > VERA_MAX_DESENHO){ area = vis; lista = coletar(area); }
+  let cortado = false;
+  if(lista.length > VERA_MAX_DESENHO){ lista = lista.slice(0, VERA_MAX_DESENHO); cortado = true; }
+  layer.clearLayers();
+  const opt = { radius:VERA_RAIO, color:"#FFFFFF", weight:2.4, opacity:.95, fillColor:"url(#gArvoreSpark)", fillOpacity:1, interactive:false };   // o clique é tratado no mapa (veraClique), com área de toque folgada
+  lista.forEach(pt=>{ new AtivoArvore([pt[0], pt[1]], opt).addTo(layer); });
+  mapaVeraNaTela = lista;
+  mapaVeraDesenhado = cortado ? null : area;
+  if(notaEl) notaEl.textContent = `${tot} árvore(s) carregada(s) — ${lista.length.toLocaleString("pt-BR")} na área visível${cortado ? " (há mais: aproxime o mapa)" : ""}.`;
+}
+const VERA_RAIO = 7;
+/* v3.32.1 - clique na árvore: procura a árvore desenhada mais perto do toque (até VERA_TOQUE_PX) e mostra os dados da VERA */
+function veraClique(ev){
+  const layer = mapaCamadaLayersAtual && mapaCamadaLayersAtual.vera;
+  if(!layer || !mapManutencao || !mapManutencao.hasLayer(layer) || !mapaVeraNaTela.length) return;
+  const alvo = ev.containerPoint; let melhor = null, dMin = VERA_TOQUE_PX;
+  for(let i=0; i<mapaVeraNaTela.length; i++){
+    const pt = mapaVeraNaTela[i], p = mapManutencao.latLngToContainerPoint([pt[0], pt[1]]);
+    const d = Math.min(Math.hypot(p.x - alvo.x, p.y - alvo.y), Math.hypot(p.x - alvo.x, (p.y - VERA_RAIO*1.3) - alvo.y));   // pé ou meio da copa
+    if(d <= dMin){ dMin = d; melhor = pt; }
+  }
+  if(!melhor) return;
+  const f = v=> (v===undefined || v===null || v==="") ? "—" : escapeHtml(String(v));
+  L.popup({ offset:[0, -VERA_RAIO*2] }).setLatLng([melhor[0], melhor[1]]).setContent(
+    `<h4>Árvore ${f(melhor[2])}</h4><dl><dt>ID VERA</dt><dd>${f(melhor[2])}</dd><dt>Espécie</dt><dd>${f(melhor[3])}</dd><dt>Alimentador</dt><dd>${f(melhor[4])}</dd><dt>Cidade</dt><dd>${f(melhor[5])}</dd><dt>Latitude</dt><dd>${Number(melhor[0]).toFixed(6)}</dd><dt>Longitude</dt><dd>${Number(melhor[1]).toFixed(6)}</dd></dl>`
+  ).openOn(mapManutencao);
+}
 async function carregarVeraMapa(){
   if(!mapaCamadaLayersAtual) return;
   const layer = mapaCamadaLayersAtual.vera;
@@ -4050,22 +4147,20 @@ async function carregarVeraMapa(){
         }
       });
     }
-    // desenha em fatias, cedendo o navegador entre elas (141 mil marcadores
-    // de uma vez congelariam a tela)
-    const FATIA = 4000;
-    for(let i=0; i<pontos.length; i+=FATIA){
-      if(mudouDeTela()) return;
-      pontos.slice(i, i+FATIA).forEach(([lat, lng, idVera, especie])=>{
-        if(typeof lat !== "number" || typeof lng !== "number") return;
-        L.circleMarker([lat, lng], { radius:3, color:"#2F9E44", weight:1, fillColor:"#2F9E44", fillOpacity:.75 })
-          .bindPopup(`<h4>Árvore ${escapeHtml(String(idVera||""))}</h4><dl><dt>Espécie</dt><dd>${escapeHtml(especie||"—")}</dd></dl>`)
-          .addTo(layer);
-      });
-      if(notaEl) notaEl.textContent = `Desenhando árvores — ${Math.min(i+FATIA, pontos.length).toLocaleString("pt-BR")} de ${pontos.length.toLocaleString("pt-BR")}…`;
-      await new Promise(r=>setTimeout(r,0));
+    // v3.32.0 - NÃO cria 141 mil marcadores: indexa os pontos numa grade e desenha só os da área visível, a partir do zoom VERA_ZOOM_MIN
+    mapaVeraPts = []; mapaVeraGrade = new Map();
+    for(let i=0; i<pontos.length; i++){
+      const pt = pontos[i];
+      if(typeof pt[0] !== "number" || typeof pt[1] !== "number") continue;
+      mapaVeraPts.push(pt);
+      const k = Math.floor(pt[0]/VERA_CELULA) + "|" + Math.floor(pt[1]/VERA_CELULA);
+      let c = mapaVeraGrade.get(k); if(!c){ c = []; mapaVeraGrade.set(k, c); } c.push(pt);
+      if(i % 20000 === 19999) await new Promise(r=>setTimeout(r,0));
     }
+    if(mudouDeTela()) return;
+    if(mapManutencao){ mapManutencao.off("click", veraClique); mapManutencao.on("click", veraClique); }
     mapaVeraCarregada = true;
-    if(notaEl) notaEl.textContent = `${pontos.length.toLocaleString("pt-BR")} árvore(s) carregada(s).`;
+    veraAtualizarViewport(true);
   }catch(err){
     toast("Não consegui carregar a VERA no mapa: " + err.message);
     if(notaEl) notaEl.textContent = "Erro ao carregar — tente ligar a camada de novo.";
@@ -4075,19 +4170,73 @@ async function carregarVeraMapa(){
    navegador, então busca só os da área visível (GET /postes/area) e só com
    zoom aproximado; refaz a busca quando o mapa é movimentado. */
 const ATIVOS_ZOOM_MIN = 14;
-/* v2.15.2 - ativos desenhados como TRIÂNGULO (no mesmo canvas, leve mesmo com 8 mil
-   pontos) para não se confundirem com as bolinhas das OS e dos equipamentos. */
+/* v2.15.2 - ativos/equipamentos desenhados com FORMAS (no mesmo canvas, leve mesmo com 8 mil pontos) para não se
+   confundirem com as bolinhas das OS. v3.27.0: Trafos = TRIÂNGULO; Ativos, Proteções, Reguladores e Capacitores =
+   QUADRADO. Funciona com o renderizador canvas e também com o SVG (antes, no SVG o ponto caía em bolinha). */
+/* v3.31.0 - ÁRVORE: contorno único gerado de 5 círculos (copa em nuvem) + tronco afunilado. Âncora = pé do tronco. */
+const ARVORE_PTS = [[0.675,-1.640],[0.514,-1.836],[0.298,-1.970],[0.051,-2.028],[-0.202,-2.003],[-0.390,-1.925],[-0.514,-1.836],[-0.619,-1.724],[-0.714,-1.562],[-0.894,-1.506],[-1.029,-1.416],[-1.112,-1.327],[-1.193,-1.187],[-1.235,-1.031],[-1.235,-0.869],[-1.176,-0.676],[-1.086,-0.541],[-0.895,-0.394],[-0.796,-0.220],[-0.641,-0.101],[-0.517,-0.059],[-0.419,-0.049],[-0.210,-0.095],[-0.299,0.951],[0.301,0.951],[0.212,-0.095],[0.323,-0.059],[0.453,-0.050],[0.581,-0.075],[0.698,-0.133],[0.817,-0.244],[0.895,-0.393],[1.086,-0.540],[1.193,-0.712],[1.228,-0.828],[1.239,-0.990],[1.219,-1.110],[1.157,-1.260],[0.997,-1.442],[0.857,-1.523],[0.714,-1.563]];
+const ARVORE_FRAC = 0.664;   // fração da altura onde a copa termina (abaixo disso é tronco)
+const _arvoreCache = {};
+function arvoreCaminho(x, y, r){
+  let t = _arvoreCache[r];
+  if(!t){
+    let ant = ARVORE_PTS[0], rel = "";
+    for(let i=1;i<ARVORE_PTS.length;i++){ const u = ARVORE_PTS[i]; rel += "l" + ((u[0]-ant[0])*r).toFixed(2) + " " + ((u[1]-ant[1])*r).toFixed(2); ant = u; }
+    t = _arvoreCache[r] = { dx: ARVORE_PTS[0][0]*r, dy: (ARVORE_PTS[0][1]-.95)*r, rel: rel + "z" };
+  }
+  return "M" + (x + t.dx).toFixed(1) + " " + (y + t.dy).toFixed(1) + t.rel;
+}
+function formaPontos(p, r, forma){
+  if(forma === "quad"){ const h = r*.95; return [[p.x-h,p.y-h],[p.x+h,p.y-h],[p.x+h,p.y+h],[p.x-h,p.y+h]]; }
+  return [[p.x, p.y - r*1.2], [p.x + r*1.1, p.y + r*.85], [p.x - r*1.1, p.y + r*.85]];
+}
 L.Canvas.include({
-  _updateAtivoTri(layer){
+  _updateAtivoForma(layer){
     if(!this._drawing || layer._empty()) return;
-    const p = layer._point, ctx = this._ctx, r = layer._radius;
+    if(layer.options.forma === "arvore"){      // v3.31.0 - mesma árvore do SVG, com degradê copa verde / tronco marrom
+      const p = layer._point, r = layer._radius, ctx = this._ctx, q = ARVORE_PTS;
+      ctx.save();
+      const g = ctx.createLinearGradient(0, p.y - 2.98*r, 0, p.y);
+      g.addColorStop(0, "#5CC96F"); g.addColorStop(ARVORE_FRAC*.9, "#34A64A"); g.addColorStop(ARVORE_FRAC-.001, "#2A8A3C"); g.addColorStop(ARVORE_FRAC, "#8B5A2B"); g.addColorStop(1, "#5E3510");
+      ctx.beginPath(); q.forEach((u,k)=>{ const x = p.x + u[0]*r, y = p.y + (u[1]-.95)*r; if(k) ctx.lineTo(x,y); else ctx.moveTo(x,y); }); ctx.closePath();
+      ctx.lineJoin = "round"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 2.4; ctx.stroke();
+      ctx.fillStyle = g; ctx.fill();
+      ctx.restore();
+      return;
+    }
+    const pts = formaPontos(layer._point, layer._radius, layer.options.forma), ctx = this._ctx;
     ctx.beginPath();
-    ctx.moveTo(p.x, p.y - r*1.2); ctx.lineTo(p.x + r*1.1, p.y + r*.85); ctx.lineTo(p.x - r*1.1, p.y + r*.85);
+    pts.forEach((q, k)=>{ if(k) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); });
     ctx.closePath();
     this._fillStroke(ctx, layer);
   }
 });
-const AtivoTriangulo = L.CircleMarker.extend({ _updatePath(){ if(this._renderer._updateAtivoTri) this._renderer._updateAtivoTri(this); else this._renderer._updateCircle(this); } });
+L.SVG.include({
+  _arvoreDefs(){
+    if(this._arvDefsOk) return; this._arvDefsOk = true;
+    const ns = "http://www.w3.org/2000/svg", defs = document.createElementNS(ns, "defs"), g = document.createElementNS(ns, "linearGradient");
+    g.setAttribute("id", "gArvoreSpark"); g.setAttribute("x1", "0"); g.setAttribute("y1", "0"); g.setAttribute("x2", "0"); g.setAttribute("y2", "1");
+    [[0,"#63D076"],[.35,"#34A64A"],[ARVORE_FRAC-.02,"#2A8A3C"],[ARVORE_FRAC,"#8B5A2B"],[1,"#5E3510"]].forEach(([o,c])=>{
+      const st = document.createElementNS(ns, "stop"); st.setAttribute("offset", String(o)); st.setAttribute("stop-color", c); g.appendChild(st); });
+    defs.appendChild(g); this._container.insertBefore(defs, this._container.firstChild);
+  },
+  _updateAtivoForma(layer){
+    if(layer._empty()){ this._setPath(layer, "M0 0"); return; }
+    if(layer.options.forma === "arvore"){      // v3.31.0 - UM contorno só (copa em nuvem + tronco); degradê com corte seco: verde em cima, marrom embaixo
+      this._arvoreDefs();
+      const p = layer._point, r = layer._radius;
+      if(!layer._arvOk){ layer._arvOk = true; if(layer._path) layer._path.style.paintOrder = "stroke"; }   // halo branco por fora, sem linha dentro
+      this._setPath(layer, arvoreCaminho(p.x, p.y, r));
+      return;
+    }
+    const pts = formaPontos(layer._point, layer._radius, layer.options.forma);
+    this._setPath(layer, "M" + pts.map(q=>q[0].toFixed(1)+" "+q[1].toFixed(1)).join("L") + "Z");
+  }
+});
+const AtivoForma = L.CircleMarker.extend({ _updatePath(){ if(this._renderer._updateAtivoForma) this._renderer._updateAtivoForma(this); else this._renderer._updateCircle(this); } });
+const AtivoTriangulo = AtivoForma.extend({ options:{ forma:"tri" } });
+const AtivoQuadrado = AtivoForma.extend({ options:{ forma:"quad" } });
+const AtivoArvore = AtivoForma.extend({ options:{ forma:"arvore" } });
 const ATIVOS_COR = { POS:"#0E7490", DRV:"#7C3AED", FLT:"#B45309", TOR:"#B42318", PSU:"#047857", PON:"#1D4ED8", PIS:"#BE185D", PMF:"#4B5563", "0":"#6B7280" };
 const ATIVOS_NOME = { POS:"Poste", DRV:"Derivação", FLT:"Flutuante", TOR:"Torre", PSU:"Poste de subestação", PON:"Ponto", PIS:"Ponto de iluminação", PMF:"Ponto de medição/fronteira", "0":"Sem tipo" };
 let ativosLigado = false, ativosTiposSel = null, ativosTiposTodos = [], ativosSeq = 0, ativosTimer = null, ativosMapa = null;
@@ -4145,7 +4294,7 @@ async function ativosCarregar(){
     layer.clearLayers();
     (r.pontos||[]).forEach(([codId, tipo, areaLoc, conj, lat, lng])=>{
       const cor = ATIVOS_COR[tipo] || "#0E7490";
-      new AtivoTriangulo([lat, lng], { radius:5.5, color:"#fff", weight:1, fillColor:cor, fillOpacity:.95 })
+      new AtivoQuadrado([lat, lng], { radius:5.5, color:"#fff", weight:1, fillColor:cor, fillOpacity:.95 })
         .bindPopup(`<h4>${escapeHtml(ATIVOS_NOME[tipo]||tipo)} ${escapeHtml(String(codId))}</h4><dl>
           <dt>COD_ID</dt><dd>${escapeHtml(String(codId))}</dd><dt>Tipo (TIP_PN)</dt><dd>${escapeHtml(tipo)}</dd>
           <dt>Área local (ARE_LOC)</dt><dd>${escapeHtml(areaLoc||"—")}</dd><dt>Conjunto (CONJ)</dt><dd>${escapeHtml(conj||"—")}</dd>
@@ -4305,7 +4454,7 @@ function equipMarcador(camada, it, rotulo){
   const cfg = EQUIP_CFG[camada];
   const aberta = camada==="protecoes" && it[9]==="A";
   const corTipo = camada==="protecoes" ? (EQUIP_PROT_COR[it[6]] || cfg.cor) : cfg.cor;
-  const m = new AtivoTriangulo([it[2], it[3]], { radius:cfg.raio+1, color:"#fff", weight:1.2, fillColor: aberta ? "#B42318" : corTipo, fillOpacity:.95 });
+  const m = new (camada==="trafos" ? AtivoTriangulo : AtivoQuadrado)([it[2], it[3]], { radius:cfg.raio+1, color:"#fff", weight:1.2, fillColor: aberta ? "#B42318" : corTipo, fillOpacity:.95 });
   m.bindPopup(()=>equipPopupHtml(camada, it));
   if(rotulo) m.bindTooltip(equipRotuloTexto(camada, it), { permanent:true, direction:"bottom", offset:[0,6], className:"equip-rotulo", opacity:1 });
   else m.bindTooltip(`${equipRotuloTexto(camada, it)} · ${equipTitulo(camada, it)}${it[1]?` · poste ${it[1]}`:""}`, { direction:"top", opacity:.95 });
@@ -4529,6 +4678,7 @@ function camadasViewportAgendar(){
   clearTimeout(mapaCamadaTimer);
   mapaCamadaTimer = setTimeout(()=>{
     if(!mapManutencao || !mapaCamadaLayersAtual) return;
+    veraAtualizarViewport(false);
     Object.keys(mapaCamadaReg).forEach(pref=>{
       const g = mapaCamadaLayersAtual[pref];
       if(g && mapManutencao.hasLayer(g)) camadaAtualizarViewport(pref, false);
@@ -4845,7 +4995,9 @@ function normalizarOSApi(o){
     realizadoLimpeza: (typeof o.realizadoLimpeza === "number") ? o.realizadoLimpeza : null,
     realizadoEstrutura: (typeof o.realizadoEstrutura === "number") ? o.realizadoEstrutura : null,
     observacao: o.observacao || "",
-    descEsquema: o.descEsquema || ""
+    descEsquema: o.descEsquema || "",
+    prioridade: o.prioridade || "",
+    numObra: o.numObra || "", recursoMo: o.recursoMo || ""
   };
 }
 /* Combo da Rede MT (a MT tem lista/banner próprios, por isso não passa por
@@ -4934,7 +5086,7 @@ async function initMapaManutencao(){
   };
   mapaCamadaLayersAtual = camadaLayers;
   if(typeof nixDesenhar === "function") nixDesenhar(camadaLayers.nix, mapManutencao).catch(()=>{});
-  mapaVeraCarregada = false;
+  mapaVeraCarregada = false; mapaVeraPts = null; mapaVeraGrade = null; mapaVeraDesenhado = null;
   ativosReset();
   equipReset();
 
@@ -4955,7 +5107,7 @@ async function initMapaManutencao(){
     const m = L.circleMarker([o.lat, o.lng], { radius:7, color:"#fff", weight:1.5, fillColor:statusColor[o.statusOS]||"#888", fillOpacity:.92 });
     /* v2.13.28 - o HTML da caixinha so e montado quando o popup/tooltip abre (antes era montado
        para TODAS as OS ao abrir o mapa - dezenas de milhares de strings e datas formatadas) */
-    const htmlOS = ()=>`<h4>${escapeHtml(o.id)}${o.aprox?"*":""}</h4>${histMapaPopupLinha(o)}${aprlPopupLinha(o)}${o.aprox?'<p style="margin:0 0 6px; font-size:11.5px; color:#B45309;">* Posição aproximada (sem coordenada no SGM): o ponto pode estar errado.</p>':""}<dl><dt>Serviço</dt><dd>${escapeHtml(servicoTextoOS(o))}</dd>${zonaDaOS(o)?`<dt>Zona</dt><dd>${escapeHtml(zonaDaOS(o))}</dd>`:""}${o.tipoEquipeExec?`<dt>Tipo equipe</dt><dd>${escapeHtml(o.tipoEquipeExec)}</dd>`:""}${o.posteId?`<dt>Poste</dt><dd>${escapeHtml(o.posteId)}${o.posteAreaLocal?` · ${escapeHtml(o.posteAreaLocal)}`:""}${o.posteConjunto?` · conj ${escapeHtml(String(o.posteConjunto))}`:""}</dd>`:""}${o.posteId?equipPosteHtml(o.posteId):""}${o.origemPos?`<dt>Posição</dt><dd>${escapeHtml(o.origemPos==="VERA" ? "VERA" + (o.idVera?` (${o.idVera})`:"") : ({XY:"XY da grid",POSTE:"Poste (PONNOT)",CIDADE:"Centro da cidade (aprox.)"}[o.origemPos]||o.origemPos))}</dd>`:""}${o.idVera && o.origemPos!=="VERA"?`<dt>ID VERA</dt><dd>${escapeHtml(String(o.idVera))}</dd>`:""}<dt>Status</dt><dd>${escapeHtml(o.statusOS)}</dd><dt>Alimentador</dt><dd>${escapeHtml(o.alimentador)}</dd>${conjuntoDaOS(o)?`<dt>Conjunto</dt><dd>${escapeHtml(conjuntoDaOS(o))}</dd>`:""}${o.protecaoId?`<dt>Proteção</dt><dd>${escapeHtml(o.protecaoId)}</dd>`:""}${o.trecho?`<dt>Trecho</dt><dd>${escapeHtml(o.trecho)}</dd>`:""}<dt>Criação</dt><dd>${o.dataAbertura?fmtDate(o.dataAbertura):"—"}</dd><dt>Execução</dt><dd>${o.dataExecucao?fmtDate(o.dataExecucao):"—"}</dd><dt>Previsto</dt><dd>${escapeHtml(String(qtdTextoOS(o,"prev")))}${o.previstoPorEsquema?` <span style="color:#B45309; font-size:11px;" title="OS sem MO: previsto 1 definido pelo tipo do esquema (base Esquemas)">· estimado pelo esquema</span>`:""}</dd><dt>Realizado</dt><dd>${escapeHtml(String(qtdTextoOS(o,"real")))}</dd></dl>`;
+    const htmlOS = ()=>`<h4>${escapeHtml(o.id)}${o.aprox?"*":""}</h4>${histMapaPopupLinha(o)}${aprlPopupLinha(o)}${o.aprox?'<p style="margin:0 0 6px; font-size:11.5px; color:#B45309;">* Posição aproximada (sem coordenada no SGM): o ponto pode estar errado.</p>':""}<dl><dt>Serviço</dt><dd>${escapeHtml(servicoTextoOS(o))}</dd>${zonaDaOS(o)?`<dt>Zona</dt><dd>${escapeHtml(zonaDaOS(o))}</dd>`:""}${o.tipoEquipeExec?`<dt>Tipo equipe</dt><dd>${escapeHtml(o.tipoEquipeExec)}</dd>`:""}${o.prioridade?`<dt>Criticidade</dt><dd>${escapeHtml(o.prioridade)}</dd>`:""}${o.recursoMo?`<dt>Recurso (MO)</dt><dd>${escapeHtml(o.recursoMo)}</dd>`:""}${o.numObra?`<dt>Nº da obra</dt><dd>${escapeHtml(o.numObra)}</dd>`:""}${o.posteId?`<dt>Poste</dt><dd>${escapeHtml(o.posteId)}${o.posteAreaLocal?` · ${escapeHtml(o.posteAreaLocal)}`:""}${o.posteConjunto?` · conj ${escapeHtml(String(o.posteConjunto))}`:""}</dd>`:""}${o.posteId?equipPosteHtml(o.posteId):""}${o.origemPos?`<dt>Posição</dt><dd>${escapeHtml(o.origemPos==="VERA" ? "VERA" + (o.idVera?` (${o.idVera})`:"") : ({XY:"XY da grid",POSTE:"Poste (PONNOT)",CIDADE:"Centro da cidade (aprox.)"}[o.origemPos]||o.origemPos))}</dd>`:""}${o.idVera && o.origemPos!=="VERA"?`<dt>ID VERA</dt><dd>${escapeHtml(String(o.idVera))}</dd>`:""}<dt>Status</dt><dd>${escapeHtml(o.statusOS)}</dd><dt>Alimentador</dt><dd>${escapeHtml(o.alimentador)}</dd>${conjuntoDaOS(o)?`<dt>Conjunto</dt><dd>${escapeHtml(conjuntoDaOS(o))}</dd>`:""}${o.protecaoId?`<dt>Proteção</dt><dd>${escapeHtml(o.protecaoId)}</dd>`:""}${o.trecho?`<dt>Trecho</dt><dd>${escapeHtml(o.trecho)}</dd>`:""}<dt>Criação</dt><dd>${o.dataAbertura?fmtDate(o.dataAbertura):"—"}</dd><dt>Execução</dt><dd>${o.dataExecucao?fmtDate(o.dataExecucao):"—"}</dd><dt>Previsto</dt><dd>${escapeHtml(String(qtdTextoOS(o,"prev")))}${o.previstoPorEsquema?` <span style="color:#B45309; font-size:11px;" title="OS sem MO: previsto 1 definido pelo tipo do esquema (base Esquemas)">· estimado pelo esquema</span>`:""}</dd><dt>Realizado</dt><dd>${escapeHtml(String(qtdTextoOS(o,"real")))}</dd></dl>`;
     m.bindPopup(htmlOS);
     /* v2.13.26 - passar o mouse mostra a mesma caixinha (clicar continua abrindo/fixando o popup) */
     m.bindTooltip(htmlOS, { direction:"top", offset:[0,-8], opacity:1, className:"os-tip" });
@@ -5026,6 +5178,7 @@ async function initMapaManutencao(){
       if(key === "vera" && input.checked && !mapaVeraCarregada){
         carregarVeraMapa();
       }
+      if(key === "vera" && input.checked && mapaVeraCarregada) veraAtualizarViewport(true);
       if(key === "ativos") ativosLigar(input.checked);
       if(EQUIP_CFG[key]) equipLigar(key, input.checked);
     });
@@ -5146,8 +5299,8 @@ function prodEhDiaUtil(iso){
    (faixa m² ÷ 100 = podas; meta de faixa em km × 150 = podas). */
 const FAIXA_M2_POR_KM = 15000;
 const FAIXA_PODAS_POR_KM = 150;      // 15.000 m² ÷ 100
-let prodServico = "poda";            // poda | faixa
-function setProdServico(v){ prodServico = (v==="faixa") ? "faixa" : "poda"; render(); }
+let prodServico = "poda";            // poda | faixa | estrutura (v3.25.0: sem meta, só execução)
+function setProdServico(v){ prodServico = (v==="faixa") ? "faixa" : (v==="estrutura") ? "estrutura" : "poda"; render(); }
 function metaTipo(m){ return (m && m.tipo==="faixa") ? "faixa" : "poda"; }
 function prodUnidade(tipo){ return (tipo||prodServico)==="faixa" ? "km" : "un."; }
 let _prodExecCache = {}, _prodExecFonte = null, _prodExecEquipes = null;
@@ -5390,6 +5543,7 @@ function viewProdutividade(){
       <div class="tabs" title="Serviço da meta">
         <button class="tab ${prodServico==='poda'?'active':''}" onclick="setProdServico('poda')">Poda (un.)</button>
         <button class="tab ${prodServico==='faixa'?'active':''}" onclick="setProdServico('faixa')">Limpeza de faixa (km)</button>
+        <button class="tab ${prodServico==='estrutura'?'active':''}" onclick="setProdServico('estrutura')" title="Estruturas executadas pelas equipes (sem meta)">Estruturas (un.)</button>
       </div>
       <div class="tabs">
         <button class="tab ${produtividadeTab==='dia'?'active':''}" onclick="setProdTab('dia')">Dia</button>
@@ -5422,7 +5576,7 @@ function viewProdutividade(){
     </div>
   </div>
 
-  <div class="card">
+  ${prodServico==="estrutura" ? prodEstruturasHtml(colunasFlat, grupos, equipes) : `<div class="card">
     ${colunasFlat.length===0 || equipes.length===0 ? `<div class="empty">${ic("empty")}<div>Nada para mostrar com esses filtros.</div></div>` : `
     <div class="table-wrap" style="overflow:auto; max-height:70vh;"><table class="prod-matrix">
       <thead>
@@ -5440,9 +5594,60 @@ function viewProdutividade(){
       </tbody>
     </table></div>`}
     <p style="color:var(--muted); font-size:11.5px; margin-top:8px;">Executado = produção das OS executadas no dia. Meta = meta mensal ÷ dias úteis (fim de semana e feriado não têm meta). Equipes sem meta aparecem sem %. ${produtividadeTab==="dia" ? "Dia abaixo de 90% mostra o botão <strong>Justificar</strong>." : ""}</p>
-  </div>
+  </div>`}
   `;
 }
+/* v3.25.0 - Produtividade > Estruturas: as equipes não têm meta de estrutura, então aqui só aparece o EXECUTADO
+   (quantidade de estruturas das OS executadas), por equipe e período, com os mesmos filtros e a mesma abertura
+   Dia/Semana/Mês da tela. Só entram equipes que executaram estrutura no período. */
+function prodEstruturasDados(colunasFlat, equipes){
+  const linhas = equipes.map(e=>{
+    const vals = colunasFlat.map(c=>prodCelula(e.id, c).exec);
+    return { e, vals, total: vals.reduce((a,b)=>a+b,0) };
+  }).filter(x=>x.total>0).sort((a,b)=>b.total-a.total || String(a.e.id).localeCompare(String(b.e.id),"pt-BR",{numeric:true}));
+  const totais = colunasFlat.map((_,i)=>linhas.reduce((s,x)=>s+x.vals[i],0));
+  return { linhas, totais, geral: totais.reduce((a,b)=>a+b,0) };
+}
+function prodEstruturasHtml(colunasFlat, grupos, equipes){
+  if(!colunasFlat.length) return `<div class="card"><div class="empty">${ic("empty")}<div>Nada para mostrar com esses filtros.</div></div></div>`;
+  const D = prodEstruturasDados(colunasFlat, equipes);
+  const fm = n => n ? prodFmt(n) : "—";
+  if(!D.linhas.length) return `<div class="card"><div class="empty">${ic("empty")}<div>Nenhuma estrutura executada no período e nos filtros escolhidos.</div></div></div>`;
+  return `<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+      <span class="pill info">${D.linhas.length} equipe(s) · ${prodFmt(D.geral)} estrutura(s) executada(s)</span>
+      <button class="btn btn-ghost btn-sm" onclick="prodEstruturasExcel()">${ic("download")||"⬇"} Baixar Excel</button>
+    </div>
+    <div class="table-wrap" style="overflow:auto; max-height:70vh;"><table class="prod-matrix">
+      <thead>
+        <tr><th rowspan="2" style="min-width:110px; position:sticky; left:0; z-index:3; background:var(--surface);">Equipe</th><th rowspan="2">Departamento</th><th rowspan="2">Regional</th><th rowspan="2">Polo</th><th rowspan="2">Própria/Terceira</th>
+          ${grupos.map(g=>`<th colspan="${g.cols.length}" style="text-align:center;">${escapeHtml(g.grupo)}</th>`).join("")}<th rowspan="2" style="text-align:right;">Total</th></tr>
+        <tr>${colunasFlat.map(c=>`<th style="text-align:right;">${escapeHtml(c.rotulo)}</th>`).join("")}</tr>
+      </thead>
+      <tbody>
+        ${D.linhas.map(x=>`<tr><td class="mono" style="position:sticky; left:0; background:var(--surface);">${escapeHtml(x.e.id)}</td><td>${escapeHtml(x.e.departamento||"")}</td><td>${escapeHtml(x.e.regional||"")}</td><td>${escapeHtml(x.e.polo||"")}</td><td>${escapeHtml(x.e.proprioTerceiro||"")}</td>${x.vals.map(v=>`<td class="num">${fm(v)}</td>`).join("")}<td class="num"><strong>${prodFmt(x.total)}</strong></td></tr>`).join("")}
+        <tr class="prod-total" style="font-weight:700; border-top:2px solid var(--border-hi);"><td colspan="5">Total</td>${D.totais.map(v=>`<td class="num">${fm(v)}</td>`).join("")}<td class="num">${prodFmt(D.geral)}</td></tr>
+      </tbody>
+    </table></div>
+    <p style="color:var(--muted); font-size:11.5px; margin-top:8px;">Executado = estruturas (unidades) das OS executadas no dia, somadas das linhas da MO. As equipes não têm meta de estrutura, por isso não há Meta nem % nesta aba.</p>
+  </div>`;
+}
+function prodEstruturasExcel(){
+  if(typeof XLSX === "undefined"){ toast("Biblioteca de planilha (XLSX) não carregada."); return; }
+  const grupos = prodColunas(prodDiasSelecionados()), colunasFlat = grupos.flatMap(g=>g.cols);
+  const D = prodEstruturasDados(colunasFlat, prodEquipesFiltradas());
+  if(!D.linhas.length){ toast("Nenhuma estrutura no período pra exportar."); return; }
+  const rot = (c,i) => { const g = grupos.find(g=>g.cols.includes(c)); return (g && produtividadeTab==="dia" ? g.grupo+" · " : "") + c.rotulo; };
+  const linhas = D.linhas.map(x=>{
+    const l = { "Equipe":x.e.id, "Departamento":x.e.departamento||"", "Regional":x.e.regional||"", "Polo":x.e.polo||"", "Própria/Terceira":x.e.proprioTerceiro||"" };
+    colunasFlat.forEach((c,i)=>{ l[rot(c,i)] = x.vals[i]; });
+    l["Total"] = x.total; return l;
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(linhas), "Estruturas");
+  XLSX.writeFile(wb, `SPARK_estruturas_${prodHojeIso()}.xlsx`);
+}
+
 /* =========================================================================
    v3.3.0 - PRODUTIVIDADE: MÉDIA POR DIA TRABALHADO
    Média = realizado ÷ dias em que a equipe subiu OS (dia com produção > 0), no período e nos filtros da tela,
@@ -11949,10 +12154,10 @@ function solicitacoesHtml(){
   <div class="card" style="margin-bottom:14px; border-left:4px solid var(--warn-fg);">
     <div class="card-head"><h3>Solicitações de cadastro <span class="pill warn">${lista.length}</span></h3></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>E-mail</th><th>Pedido em</th><th></th></tr></thead>
+      <thead><tr><th>E-mail</th><th>Nome</th><th>Senha</th><th>Pedido em</th><th></th></tr></thead>
       <tbody>
         ${lista.map(sl=>`<tr>
-          <td>${escapeHtml(sl.email)}</td><td>${fmtDateTime(sl.criadoEm)}</td>
+          <td>${escapeHtml(sl.email)}</td><td>${escapeHtml(sl.nome||"")}</td><td>${sl.temSenha?"escolhida pela pessoa":"admin define"}</td><td>${fmtDateTime(sl.criadoEm)}</td>
           <td style="white-space:nowrap;"><button class="btn btn-primary btn-sm" onclick="abrirAprovarSolicitacao('${sl.id}')">${ic("check")} Aprovar</button>
           <button class="btn btn-danger btn-sm" onclick="recusarSolicitacao('${sl.id}')">Recusar</button></td></tr>`).join("")}
       </tbody>
@@ -11967,14 +12172,12 @@ function abrirAprovarSolicitacao(id){
   if(!sl) return;
   openModal(`
     <h2>Aprovar cadastro</h2>
-    <p class="modal-sub">${sl.temSenha
-      ? `${escapeHtml(sl.email)} já escolheu a própria senha no pedido — confira o nome e escolha o perfil-modelo.`
-      : `${escapeHtml(sl.email)} só informou o e-mail — defina nome, perfil-modelo e uma senha inicial (avise a pessoa; ela pode trocar depois).`}</p>
+    <p class="modal-sub">${sl.temSenha ? `${escapeHtml(sl.email)} já escolheu a própria senha — é só conferir o nome e o perfil-modelo.` : `${escapeHtml(sl.email)} só informou o e-mail — defina nome, perfil-modelo e uma senha inicial (avise a pessoa; ela pode trocar depois).`}</p>
     <div id="aprovarErro"></div>
     <div class="field" style="margin-bottom:12px;"><label>Nome</label><input id="aprNome" value="${escapeHtml(sl.nome || sl.email.split("@")[0])}"></div>
     <div class="field" style="margin-bottom:12px;"><label>Perfil-modelo</label>
       <select id="aprPerfil">${Object.keys(state.perfisModelo).map(p=>`<option value="${escapeHtml(p)}" ${p==="Consulta"?"selected":""}>${escapeHtml(p)}</option>`).join("")}</select></div>
-    <div class="field"><label>${sl.temSenha ? "Nova senha (opcional)" : "Senha inicial"}</label><input id="aprSenha" type="text" placeholder="${sl.temSenha ? "deixe em branco para manter a senha escolhida pela pessoa" : "mínimo 8 caracteres"}"></div>
+    ${sl.temSenha ? "" : `<div class="field"><label>Senha inicial</label><input id="aprSenha" type="text" placeholder="mínimo 3 caracteres"></div>`}
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="aprovarSolicitacao('${id}')">${ic("check")} Aprovar e criar usuário</button>
@@ -11983,11 +12186,11 @@ function abrirAprovarSolicitacao(id){
 async function aprovarSolicitacao(id){
   const nome = document.getElementById("aprNome").value.trim();
   const perfilBase = document.getElementById("aprPerfil").value;
-  const senha = document.getElementById("aprSenha").value;
+  const slAprov = (state.solicitacoes||[]).find(x=>x.id===id);
+  const campoSenha = document.getElementById("aprSenha");
+  const senha = campoSenha ? campoSenha.value : "";
   const erro = document.getElementById("aprovarErro");
-  const sl = (state.solicitacoes||[]).find(x=>x.id===id);
-  const temSenha = !!(sl && sl.temSenha);
-  if((!temSenha || senha) && senha.length<8){ erro.innerHTML = `<div class="login-error">${ic("info")}<div>${temSenha ? "A nova senha precisa ter pelo menos 8 caracteres (ou deixe em branco)." : "Defina uma senha inicial (mínimo 8 caracteres)."}</div></div>`; return; }
+  if(!(slAprov && slAprov.temSenha) && (!senha || senha.length<3)){ erro.innerHTML = `<div class="login-error">${ic("info")}<div>Defina uma senha inicial (mínimo 3 caracteres).</div></div>`; return; }
   try{
     await apiPost(`/usuarios/solicitacoes/${id}/aprovar`, { nome, perfilBase, senha });
     closeModal(); toast("Cadastro aprovado — usuário criado e ativo.");
@@ -12089,7 +12292,7 @@ function selecionarUsuarioPermissao(id){
 /* v2.13.0 - rascunho das permissões: marcar/desmarcar caixas NÃO grava
    mais na hora; fica como rascunho até clicar em Salvar (ou Descartar). */
 let permRascunho = null;   // { usuarioId, matriz, perfilBase|null }
-const MODULO_ROTULOS = { manutencao:"Manutenção", produtividade:"Produtividade", metas:"Metas", programacao:"Programação", prefeituras:"Prefeituras", gestaoBases:"Gestão de Bases", alertas:"Alertas (menu)", prioridade:"Prioridade da programação", nix:"Pontos Nix", usuarios:"Configuração" };
+const MODULO_ROTULOS = { manutencao:"Manutenção", produtividade:"Produtividade", metas:"Metas", programacao:"Programação", prefeituras:"Prefeituras", gestaoBases:"Gestão de Bases", alertas:"Alertas (menu)", prioridade:"Prioridade da programação", nix:"Pontos Nix", usuarios:"Configuração", geral:"Visão Geral (menu)", historico:"Histórico de Podas (menu)", medicao:"Medição de terceiros (menu)", regras:"Regras de importação (aba da Configuração)", importacao:"Importação de Bases (menu)" };
 function permMatrizAtual(uid){
   if(permRascunho && permRascunho.usuarioId===uid) return permRascunho.matriz;
   return state.permissoes[uid] || {};
@@ -12168,14 +12371,14 @@ function permissaoPainelHtml(){
         ${state.MODULOS.map(mod=>`
           <tr>
             <td>${MODULO_ROTULOS[mod]||mod}</td>
-            ${state.ACOES.map(acao=> (mod==="alertas" && acao!=="visualizar") || (mod==="prioridade" && (acao==="criar"||acao==="editar")) || (mod==="nix" && acao==="editar") ? `<td class="checkbox-cell"></td>` : `
-              <td class="checkbox-cell"><input type="checkbox" ${(mod==="alertas" ? (matriz.alertas && typeof matriz.alertas.visualizar==="boolean" ? matriz.alertas.visualizar : (u.perfilBase==="Administrador" || alertasVisivel(matriz))) : (matriz[mod] && matriz[mod][acao])) ? "checked":""} ${podeEditar?"":"disabled"} onchange="togglePermissao('${u.id}','${mod}','${acao}',this.checked)"></td>
+            ${state.ACOES.map(acao=> (MODULOS_MENU[mod] && acao!=="visualizar") || (mod==="prioridade" && (acao==="criar"||acao==="editar")) || (mod==="nix" && acao==="editar") ? `<td class="checkbox-cell"></td>` : `
+              <td class="checkbox-cell"><input type="checkbox" ${(MODULOS_MENU[mod] ? menuVisivelNaMatriz(mod, matriz, u.perfilBase==="Administrador") : (matriz[mod] && matriz[mod][acao])) ? "checked":""} ${podeEditar?"":"disabled"} onchange="togglePermissao('${u.id}','${mod}','${acao}',this.checked)"></td>
             `).join("")}
           </tr>
         `).join("")}
       </tbody>
     </table></div>
-    <p style="color:var(--muted); font-size:11.5px; margin-top:10px;">"Alertas (menu)" só mostra ou esconde o menu Alertas para esse usuário. Ajuste fino por usuário. O perfil-modelo é só um ponto de partida — cada caixa pode ser ligada ou desligada individualmente.</p>
+    <p style="color:var(--muted); font-size:11.5px; margin-top:10px;">As linhas marcadas com "(menu)" e Alertas só mostram ou escondem aquele item do menu para o usuário (os dados continuam protegidos pelos módulos de Manutenção etc.); Nos itens de menu, a escolha marcada vale até para Administrador (desmarcar esconde o item dele também). Ajuste fino por usuário. O perfil-modelo é só um ponto de partida — cada caixa pode ser ligada ou desligada individualmente.</p>
   `;
 }
 function togglePermissao(uid, mod, acao, val){
@@ -12296,12 +12499,27 @@ function alertasVisivel(matriz){
   if(matriz && matriz.alertas && typeof matriz.alertas.visualizar === "boolean") return matriz.alertas.visualizar;
   return !!(matriz && matriz.manutencao && matriz.manutencao.visualizar);
 }
+/* v3.26.0 - TODA opção do menu tem caixa "Visualizar" própria na matriz. Os módulos abaixo são "só de menu"
+   (uma caixa só). Quem nunca teve a caixa marcada/desmarcada segue o padrão de antes (coluna `padrao`), então
+   ninguém perde acesso na atualização; a escolha explícita vale depois disso. Administrador sempre vê
+   (exceto Alertas, que sempre aceitou a escolha explícita). */
+const MODULOS_MENU = {
+  alertas:    { adminSempre:false, padrao:m=>alertasVisivel(m) },
+  geral:      { adminSempre:false,  padrao:m=>true },
+  historico:  { adminSempre:false,  padrao:m=>!!(m.manutencao && m.manutencao.visualizar) },
+  medicao:    { adminSempre:false,  padrao:m=>false },
+  regras:     { adminSempre:false,  padrao:m=>false },
+  importacao: { adminSempre:false,  padrao:m=>["manutencao","metas","prefeituras","prioridade"].some(x=>m[x] && m[x].importar) },
+};
+function menuVisivelNaMatriz(mod, matriz, ehAdmin){
+  const c = MODULOS_MENU[mod], m = matriz || {};
+  if(m[mod] && typeof m[mod].visualizar === "boolean" && !(ehAdmin && c.adminSempre)) return m[mod].visualizar;
+  if(ehAdmin) return true;
+  return !!c.padrao(m);
+}
 function minhaPermissao(modulo, acao){
-  if(modulo === "alertas" && acao === "visualizar" && currentUser){
-    const m = state.permissoes[currentUser.id] || {};
-    if(m.alertas && typeof m.alertas.visualizar === "boolean") return m.alertas.visualizar;
-    if(currentUser.perfilBase === "Administrador") return true;
-    return alertasVisivel(m);
+  if(MODULOS_MENU[modulo] && acao === "visualizar" && currentUser){
+    return menuVisivelNaMatriz(modulo, state.permissoes[currentUser.id] || {}, currentUser.perfilBase === "Administrador");
   }
   // Sem login real (protótipo offline) mantemos o comportamento de sempre:
   // tudo liberado, pra não travar a demo.
@@ -12387,9 +12605,96 @@ function mostrarApp(){
   atualizarUserPill();
   renderNav();
   render();
+  avisosIniciar();
   // v2.12.0 - carrega as camadas do mapa em segundo plano (mapacache.js),
   // pra o Mapa de Manutenção já abrir com tudo na memória da sessão.
   setTimeout(()=>{ if(typeof mapaCacheIniciar === "function") mapaCacheIniciar(); }, MAPA_CACHE_ATRASO_INICIAL_MS);
+}
+/* v3.20.0 - AVISOS EM SEGUNDO PLANO: de tempos em tempos (e quando a aba volta ao foco) o SPARK pergunta ao Controller se há
+   pedidos de cadastro novos. Se houver: bolinha laranja no menu Configuração (e na aba Usuários & Permissões) + aviso na tela,
+   sem tirar o usuário de onde está. Só para quem pode aprovar cadastros (Usuários > Editar). Uma consulta pequena a cada 45 s. */
+const AVISOS_INTERVALO_MS = 45000;
+let _avisosTimer = null, _avisosConhecidos = null, _avisosOcupado = false;
+function avisosPendentes(){
+  return minhaPermissao("usuarios","editar") ? (state.solicitacoes||[]).length : 0;
+}
+function avisoBadgeHtml(rotaKey){
+  if(rotaKey !== "configuracao") return "";
+  const n = avisosPendentes();
+  return n ? `<span class="nav-badge" title="${n} pedido(s) de cadastro aguardando">${n>99?"99+":n}</span>` : "";
+}
+function avisosPintar(){
+  const btn = document.querySelector('.nav-item[data-route="configuracao"]');
+  if(btn){
+    const ant = btn.querySelector(".nav-badge"); if(ant) ant.remove();
+    const h = avisoBadgeHtml("configuracao"); if(h) btn.insertAdjacentHTML("beforeend", h);
+  }
+}
+async function avisosVerificar(){
+  if(_avisosOcupado || document.hidden || !API_ONLINE || !minhaPermissao("usuarios","editar")) return;
+  _avisosOcupado = true;
+  try{
+    const lista = await apiGet("/usuarios/solicitacoes");
+    if(!Array.isArray(lista)) return;
+    const ids = new Set(lista.map(x=>x.id));
+    const novos = _avisosConhecidos ? lista.filter(x=>!_avisosConhecidos.has(x.id)) : [];
+    const mudou = lista.length !== (state.solicitacoes||[]).length || novos.length>0;
+    _avisosConhecidos = ids;
+    state.solicitacoes = lista;
+    avisosPintar();
+    if(novos.length){
+      toast(novos.length===1 ? `Novo pedido de cadastro: ${novos[0].email}. Veja em Configuração > Usuários & Permissões.` : `${novos.length} novos pedidos de cadastro. Veja em Configuração > Usuários & Permissões.`);
+    }
+    // se já está na tela de Usuários, atualiza a lista (sem mexer se há janela aberta ou campo sendo digitado)
+    if(mudou && currentRoute().key==="configuracao" && cfgAba==="usuarios"){
+      const ov = document.getElementById("modalOverlay");
+      const digitando = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+      if(!(ov && ov.classList.contains("open")) && !digitando) render();
+    }
+  }catch(e){ /* sem rede/Controller: tenta de novo no próximo ciclo */ }
+  finally{ _avisosOcupado = false; }
+}
+function avisosIniciar(){
+  _avisosConhecidos = new Set((state.solicitacoes||[]).map(x=>x.id));
+  avisosPintar();
+  if(_avisosTimer) clearInterval(_avisosTimer);
+  _avisosTimer = setInterval(avisosVerificar, AVISOS_INTERVALO_MS);
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) avisosVerificar(); });
+}
+/* v3.18.0 - força de senha (mesma regra do Controller: Test-ForcaSenha). Devolve {nivel:0-4, motivo:"" se ok}. */
+function senhaForca(senha, email){
+  const s = String(senha||"");
+  const comuns = ["12345678","123456789","1234567890","abc12345","senha123","senha1234","password1","password123","qwerty123","energisa1","energisa123","spark1234","spark123","admin123","mudar123"];
+  let motivo = "";
+  if(s.length < 8) motivo = "Pelo menos 8 caracteres.";
+  else if(s.length > 128) motivo = "Senha longa demais (máximo 128).";
+  else if(!/[A-Za-z]/.test(s)) motivo = "Use pelo menos uma letra.";
+  else if(!/[0-9]/.test(s)) motivo = "Use pelo menos um número.";
+  else if(comuns.includes(s.toLowerCase())) motivo = "Senha muito comum.";
+  else if(/^(.)\1+$/.test(s)) motivo = "Não repita o mesmo caractere.";
+  else {
+    const loc = String(email||"").trim().toLowerCase().split("@")[0];
+    if(loc.length>=4 && s.toLowerCase().includes(loc)) motivo = "A senha não pode conter o seu e-mail.";
+  }
+  let nivel = 0;
+  if(s.length) nivel = 1;
+  if(!motivo){
+    nivel = 2;
+    const variedade = [/[a-z]/,/[A-Z]/,/[0-9]/,/[^A-Za-z0-9]/].filter(r=>r.test(s)).length;
+    if(s.length>=10 && variedade>=3) nivel = 3;
+    if(s.length>=12 && variedade>=3) nivel = 4;
+  }
+  return { nivel, motivo };
+}
+function senhaForcaAtualizar(){
+  const s1 = document.getElementById("solicitarSenha"), s2 = document.getElementById("solicitarSenha2");
+  const barra = document.getElementById("senhaForcaBarra"), txt = document.getElementById("senhaForcaTxt"), conf = document.getElementById("senhaConfTxt");
+  if(!s1 || !barra) return;
+  const r = senhaForca(s1.value, (document.getElementById("solicitarEmail")||{}).value);
+  const nomes = ["", "Fraca", "Aceitável", "Boa", "Forte"], cores = ["", "#c0392b", "#d68910", "#2e9e5b", "#1e7a34"];
+  barra.style.width = (r.nivel*25)+"%"; barra.style.background = cores[r.nivel]||"transparent";
+  txt.textContent = !s1.value ? "\u00a0" : (r.motivo ? r.motivo : nomes[r.nivel]);
+  if(conf) conf.textContent = !s2.value ? "\u00a0" : (s1.value===s2.value ? "As senhas conferem." : "As senhas não são iguais.");
 }
 /* v2.13.0 - "Solicitar cadastro": a pessoa informa só o e-mail; o pedido
    aparece pro administrador em Usuários & Permissões (Aprovar / Recusar). */
@@ -12411,23 +12716,24 @@ function voltarParaLogin(){
 async function onSolicitarCadastro(event){
   event.preventDefault();
   const email = document.getElementById("solicitarEmail").value.trim();
-  const nome = document.getElementById("solicitarNome").value.trim();
-  const senha = document.getElementById("solicitarSenha").value;
-  const senha2 = document.getElementById("solicitarSenha2").value;
   const msg = document.getElementById("solicitarMsg");
   const btn = document.getElementById("solicitarBtn");
   if(!API_ONLINE){
     msg.innerHTML = `<div class="login-error">${ic("info")}<div>Controller offline — abra o sistema pelo iniciar.bat para enviar o pedido.</div></div>`;
     return false;
   }
-  // v3.16.1 - a propria pessoa escolhe a senha no pedido (o admin so aprova)
-  if(senha.length < 8){ msg.innerHTML = `<div class="login-error">${ic("info")}<div>A senha precisa ter pelo menos 8 caracteres.</div></div>`; return false; }
-  if(senha !== senha2){ msg.innerHTML = `<div class="login-error">${ic("info")}<div>As duas senhas não conferem.</div></div>`; return false; }
+  const nome = document.getElementById("solicitarNome").value.trim();
+  const senha = document.getElementById("solicitarSenha").value;
+  const senha2 = document.getElementById("solicitarSenha2").value;
+  const forca = senhaForca(senha, email);
+  if(forca.motivo){ msg.innerHTML = `<div class="login-error">${ic("info")}<div>${escapeHtml(forca.motivo)}</div></div>`; return false; }
+  if(senha !== senha2){ msg.innerHTML = `<div class="login-error">${ic("info")}<div>As senhas não são iguais.</div></div>`; return false; }
   btn.disabled = true;
   try{
     const r = await apiPost("/usuarios/solicitar-cadastro", { email, nome, senha });
     msg.innerHTML = `<div class="login-ok">${ic("check")}<div>${escapeHtml((r && r.mensagem) || "Pedido enviado.")}</div></div>`;
-    ["solicitarEmail","solicitarNome","solicitarSenha","solicitarSenha2"].forEach(i => { document.getElementById(i).value = ""; });
+    ["solicitarEmail","solicitarNome","solicitarSenha","solicitarSenha2"].forEach(i=>{ document.getElementById(i).value = ""; });
+    senhaForcaAtualizar();
   }catch(err){
     let t = err.message; const m = t.match(/\(([^)]+)\)\s*$/); if(m) t = m[1];
     msg.innerHTML = `<div class="login-error">${ic("info")}<div>${escapeHtml(t)}</div></div>`;
@@ -12896,7 +13202,8 @@ function cfgAbas(){
     ["alertas","Alertas", minhaPermissao("alertas","visualizar")],
     ["nix","Pontos Nix", minhaPermissao("nix","importar")],
     ["aprl","APP / RL", minhaPermissao("manutencao","visualizar")],
-    ["usuarios","Usuários & Permissões", minhaPermissao("usuarios","editar")],
+    ["regras","Regras de importação", minhaPermissao("regras","visualizar")],
+    ["usuarios","Usuários & Permissões" + (avisosPendentes() ? ` <span class="nav-badge nav-badge-inline">${avisosPendentes()}</span>` : ""), minhaPermissao("usuarios","editar")],
   ].filter(x=>x[2]);
 }
 function viewConfiguracao(){
@@ -12906,6 +13213,7 @@ function viewConfiguracao(){
   if(cfgAba==="alertas") corpo = `<div id="cfgAlertasWrap">${alertasConfigHtml()}</div>`;
   else if(cfgAba==="nix") corpo = nixConfigConteudoHtml();
   else if(cfgAba==="aprl") corpo = `<div id="cfgAprlWrap">${aprlConfigHtml()}</div>`;
+  else if(cfgAba==="regras") corpo = regrasAbaHtml();
   else if(cfgAba==="usuarios") corpo = viewUsuarios();
   return `<div class="tabs" style="margin-bottom:14px; flex-wrap:wrap;">${abas.map(([k,r])=>`<button class="tab ${cfgAba===k?"active":""}" onclick="cfgTrocarAba('${k}')">${r}</button>`).join("")}</div>${corpo}`;
 }
@@ -12914,6 +13222,7 @@ async function cfgDepoisDeRenderizar(){
   if(cfgAba==="alertas"){ await alertasCarregar(); const c = document.getElementById("cfgAlertasWrap"); if(c) c.innerHTML = alertasConfigHtml(); }
   else if(cfgAba==="nix"){ nixAbrirPeloMenu(); }
   else if(cfgAba==="aprl"){ await aprlConfigDepoisDeRenderizar(); }
+  else if(cfgAba==="regras"){ await regrasCarregar(); }
 }
 
 function viewAlertas(){
@@ -12931,6 +13240,7 @@ const VIEWS = {
   programacao: viewProgramacao,
   prioridade: viewPrioridade,
   nix: viewNixPagina,
+  medicao: viewMedicao,
   historico: viewHistoricoPagina,
   prefeituras: viewPrefeituras,
   importacao: viewImportacao,
@@ -12947,6 +13257,7 @@ const AFTER_RENDER = {
   alertas: alertasCarregar,
   prioridade: rankAnInit,
   nix: nixPaginaInit,
+  medicao: medicaoInit,
   historico: historicoPaginaInit,
   configuracao: cfgDepoisDeRenderizar,
 };

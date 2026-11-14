@@ -36,27 +36,29 @@ function Invoke-UsuariosRoute {
         if ($email -notmatch '^[^@\s]+@[^@\s]+\.[^@\s]+$') {
             return @{ status = 400; body = @{ erro = "Informe um e-mail válido." } }
         }
-        # v3.16.1 - a propria pessoa escolhe a senha no pedido (o admin so aprova)
-        $senhaPedido = if ($null -ne $Body.senha) { "$($Body.senha)" } else { "" }
-        if ($senhaPedido.Length -lt 8 -or $senhaPedido.Length -gt 72) {
-            return @{ status = 400; body = @{ erro = "Escolha uma senha de 8 a 72 caracteres." } }
-        }
+        # v3.18.0 - a pessoa já pode escolher a própria senha (e o nome). Sem senha no pedido = fluxo antigo (admin define).
+        $senhaEscolhida = if ($null -ne $Body.senha) { "$($Body.senha)" } else { "" }
         $nomePedido = if ($Body.nome) { "$($Body.nome)".Trim() } else { "" }
-        if ($nomePedido.Length -gt 120) { $nomePedido = $nomePedido.Substring(0, 120) }
-        if ([string]::IsNullOrWhiteSpace($nomePedido)) { $nomePedido = $email.Split("@")[0] }
+        if ($nomePedido.Length -gt 80) { $nomePedido = $nomePedido.Substring(0, 80) }
+        if ($senhaEscolhida -ne "") {
+            $motivoSenha = Test-ForcaSenha -Senha $senhaEscolhida -Email $email
+            if ($motivoSenha -ne "") { return @{ status = 400; body = @{ erro = $motivoSenha } } }
+        }
         $usuarios = @(Read-JsonModel -Entity "usuarios")
         $jaUsuario = @($usuarios | Where-Object { $_.email -and $_.email.Trim().ToLower() -eq $email })
         $solic = @(Read-JsonModel -Entity "solicitacoes_cadastro")
         $jaPedido = @($solic | Where-Object { $_.email -eq $email -and $_.status -eq "Pendente" })
         if ($jaUsuario.Count -eq 0 -and $jaPedido.Count -eq 0) {
-            $solic += @{ id = (New-EntityId -Prefix "s"); email = $email; status = "Pendente"; criadoEm = (Get-IsoNow) }
+            $solic += @{ id = (New-EntityId -Prefix "s"); email = $email; nome = $nomePedido; temSenha = ($senhaEscolhida -ne ""); status = "Pendente"; criadoEm = (Get-IsoNow) }
             Write-JsonModel -Entity "solicitacoes_cadastro" -Data $solic
-            # aparece na lista de Usuarios como "pendente", ja com a senha que a
-            # pessoa escolheu; o login so passa depois da aprovacao (statusConta Ativo)
+            # aparece na lista de Usuarios como "pendente" (sem senha utilizavel
+            # ate o administrador aprovar e definir a senha inicial)
+            $senhaGravar = if ($senhaEscolhida -ne "") { $senhaEscolhida } else { [guid]::NewGuid().ToString() }
             $usuarios += @{
-                id = (New-EntityId -Prefix "u"); nome = $nomePedido; email = $email
-                senha = (ConvertTo-SenhaOfuscada -Texto $senhaPedido)
-                statusConta = "PendenteAprovacao"; perfilBase = "Consulta"; origem = "solicitacao"; senhaDefinida = $true
+                id = (New-EntityId -Prefix "u"); nome = $(if ($nomePedido -ne "") { $nomePedido } else { $email.Split("@")[0] }); email = $email
+                senha = (ConvertTo-SenhaOfuscada -Texto $senhaGravar)
+                senhaPropria = ($senhaEscolhida -ne "")
+                statusConta = "PendenteAprovacao"; perfilBase = "Consulta"; origem = "solicitacao"
             }
             Write-JsonModel -Entity "usuarios" -Data $usuarios
         }
@@ -69,16 +71,7 @@ function Invoke-UsuariosRoute {
             return @{ status = 403; body = @{ erro = "Sem permissão para ver solicitações de cadastro." } }
         }
         $pend = @(Read-JsonModel -Entity "solicitacoes_cadastro" | Where-Object { $_.status -eq "Pendente" })
-        # v3.16.1 - nome e temSenha (a pessoa ja escolheu a propria senha) vem do usuario pendente
-        $usuariosPend = @(Read-JsonModel -Entity "usuarios" | Where-Object { $_.statusConta -eq "PendenteAprovacao" })
-        $lista = foreach ($sp in $pend) {
-            $em = "$($sp.email)".Trim().ToLower()
-            $up = $usuariosPend | Where-Object { $_.email -and "$($_.email)".Trim().ToLower() -eq $em } | Select-Object -First 1
-            @{ id = $sp.id; email = $sp.email; status = $sp.status; criadoEm = $sp.criadoEm
-               nome = if ($up) { $up.nome } else { $null }
-               temSenha = [bool]($up -and $up.senhaDefinida -eq $true) }
-        }
-        return @{ status = 200; body = @($lista) }
+        return @{ status = 200; body = @($pend) }
     }
 
     # POST /api/usuarios/solicitacoes/{id}/aprovar { nome, perfilBase, senha } -
@@ -95,18 +88,16 @@ function Invoke-UsuariosRoute {
         $perfil = if ($Body.perfilBase) { $Body.perfilBase } else { "Consulta" }
         $email = "$($solic[$idx].email)".Trim().ToLower()
         $usuarios = @(Read-JsonModel -Entity "usuarios")
+        $nome = if ($Body.nome) { "$($Body.nome)".Trim() } else { $email.Split("@")[0] }
         $uidx = $null
         for ($i = 0; $i -lt $usuarios.Count; $i++) {
             if ($usuarios[$i].email -and "$($usuarios[$i].email)".Trim().ToLower() -eq $email) { $uidx = $i; break }
         }
-        # v3.16.1 - senha opcional quando a pessoa ja escolheu a dela no pedido;
-        # se o admin informar uma, ela substitui a escolhida.
-        $jaTemSenha = ($null -ne $uidx -and $usuarios[$uidx].statusConta -eq "PendenteAprovacao" -and $usuarios[$uidx].senhaDefinida -eq $true)
-        $senhaAprov = if ($null -ne $Body.senha) { "$($Body.senha)" } else { "" }
-        if (($senhaAprov -eq "" -and -not $jaTemSenha) -or ($senhaAprov -ne "" -and $senhaAprov.Length -lt 8)) {
-            return @{ status = 400; body = @{ erro = "Defina uma senha inicial (mínimo 8 caracteres)." } }
+        # v3.18.0 - se a pessoa já escolheu a senha no pedido, o admin não precisa definir (a senha dela é mantida)
+        $senhaDaPessoa = ($null -ne $uidx -and $usuarios[$uidx].statusConta -eq "PendenteAprovacao" -and $usuarios[$uidx].senhaPropria -eq $true)
+        if (-not $senhaDaPessoa -and ([string]::IsNullOrWhiteSpace($Body.senha) -or $Body.senha.Length -lt 3)) {
+            return @{ status = 400; body = @{ erro = "Defina uma senha inicial (mínimo 3 caracteres)." } }
         }
-        $nome = if ($Body.nome -and "$($Body.nome)".Trim()) { "$($Body.nome)".Trim() } elseif ($null -ne $uidx -and $usuarios[$uidx].nome) { $usuarios[$uidx].nome } else { $email.Split("@")[0] }
         if ($null -ne $uidx -and $usuarios[$uidx].statusConta -eq "Ativo") {
             # ja existe e ativo (ex.: aprovacao anterior que parou no meio): so fecha o pedido
             $userId = $usuarios[$uidx].id; $nome = $usuarios[$uidx].nome
@@ -114,7 +105,7 @@ function Invoke-UsuariosRoute {
             # usuario pendente criado pelo pedido: ativa, define nome/senha/perfil
             $userId = $usuarios[$uidx].id
             Set-PropValor $usuarios[$uidx] "nome" $nome
-            if ($senhaAprov -ne "") { Set-PropValor $usuarios[$uidx] "senha" (ConvertTo-SenhaOfuscada -Texto $senhaAprov) }
+            if (-not $senhaDaPessoa) { Set-PropValor $usuarios[$uidx] "senha" (ConvertTo-SenhaOfuscada -Texto $Body.senha) }
             Set-PropValor $usuarios[$uidx] "statusConta" "Ativo"
             Set-PropValor $usuarios[$uidx] "perfilBase" $perfil
             Write-JsonModel -Entity "usuarios" -Data $usuarios
@@ -122,7 +113,7 @@ function Invoke-UsuariosRoute {
             $userId = New-EntityId -Prefix "u"
             $usuarios += @{
                 id = $userId; nome = $nome; email = $email
-                senha = (ConvertTo-SenhaOfuscada -Texto $senhaAprov)
+                senha = (ConvertTo-SenhaOfuscada -Texto $Body.senha)
                 statusConta = "Ativo"; perfilBase = $perfil
             }
             Write-JsonModel -Entity "usuarios" -Data $usuarios

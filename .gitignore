@@ -10,3 +10,4 @@ migracao/amostra/
 /php/vendor/
 *.zip
 _descartado/
+Thumbs.db

@@ -36,6 +36,9 @@ class InstalarSchema extends Command
                 CREATE TABLE IF NOT EXISTS rede_alimentadores (camada TEXT NOT NULL, alimentador TEXT NOT NULL, nome TEXT, nomes JSONB,
                     trechos INT NOT NULL DEFAULT 0, metros NUMERIC, atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY (camada, alimentador));
                 CREATE TABLE IF NOT EXISTS app_rl_indice (os_id TEXT PRIMARY KEY, app NUMERIC, rl NUMERIC);
+                ALTER TABLE permissoes ADD COLUMN IF NOT EXISTS valor BOOLEAN NOT NULL DEFAULT true;
+                CREATE TABLE IF NOT EXISTS regras (id TEXT PRIMARY KEY, ordem INT NOT NULL DEFAULT 0, dados JSONB NOT NULL);
+                CREATE TABLE IF NOT EXISTS regras_historico (id BIGSERIAL PRIMARY KEY, em TIMESTAMPTZ NOT NULL DEFAULT now(), usuario TEXT, regra_id TEXT, nome TEXT, acao TEXT, antes JSONB, depois JSONB);
                 CREATE TABLE IF NOT EXISTS equip_nomes (camada TEXT NOT NULL, cod_id TEXT NOT NULL, nome TEXT, alias TEXT, PRIMARY KEY (camada, cod_id));
                 INSERT INTO equip_nomes (camada, cod_id, nome) SELECT camada, cod_id, nome_operativo FROM equipamentos
                     WHERE coalesce(nome_operativo, '') <> '' AND NOT EXISTS (SELECT 1 FROM equip_nomes) ON CONFLICT DO NOTHING;

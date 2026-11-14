@@ -84,6 +84,25 @@ function Test-SenhaUsuario {
     return (ConvertFrom-SenhaOfuscada -TextoOfuscado $SenhaGravada) -ceq $SenhaDigitada
 }
 
+function Test-ForcaSenha {
+    <# v3.18.0 - regra de senha para quem ESCOLHE a própria senha (pedido de cadastro): mínimo 8 caracteres, ao menos uma
+       letra e um número, não pode ser só uma sequência óbvia nem conter o e-mail. Devolve "" se estiver ok, senão o motivo. #>
+    param([string]$Senha, [string]$Email)
+    if ([string]::IsNullOrEmpty($Senha) -or $Senha.Length -lt 8) { return "A senha precisa ter pelo menos 8 caracteres." }
+    if ($Senha.Length -gt 128) { return "A senha é longa demais (máximo 128 caracteres)." }
+    if ($Senha -notmatch '[A-Za-z]') { return "Use pelo menos uma letra na senha." }
+    if ($Senha -notmatch '[0-9]') { return "Use pelo menos um número na senha." }
+    $min = $Senha.ToLower()
+    $comuns = @('12345678','123456789','1234567890','abc12345','senha123','senha1234','password1','password123','qwerty123','energisa1','energisa123','spark1234','spark123','admin123','mudar123')
+    if ($comuns -contains $min) { return "Essa senha é muito comum. Escolha outra." }
+    if ($Senha -match '^(.)\1+$') { return "A senha não pode repetir o mesmo caractere." }
+    if (-not [string]::IsNullOrWhiteSpace($Email)) {
+        $local = "$Email".Trim().ToLower().Split('@')[0]
+        if ($local.Length -ge 4 -and $min.Contains($local)) { return "A senha não pode conter o seu e-mail." }
+    }
+    return ""
+}
+
 function Get-UserPermissions {
     <# Retorna a matriz de permissões do usuário; se não houver registro
        específico, cai no perfil-modelo do usuário (Escopo, seção 8.3). #>
@@ -111,6 +130,20 @@ function Test-Permissao {
     $matriz = Get-UserPermissions -UsuarioId $UsuarioId
     if ($matriz.$Modulo -and $matriz.$Modulo.$Acao) { return $true }
     return $false
+}
+
+function Test-PermissaoHistorico {
+    <# v3.26.0 - menu "Histórico de Podas" tem caixa própria na matriz (modulo "historico", Visualizar).
+       Sem escolha explícita (nunca marcada/desmarcada), vale a permissão de Manutenção como antes.
+       Administrador sempre pode. #>
+    param([Parameter(Mandatory)][string]$UsuarioId)
+    $usuarios = Read-JsonModel -Entity "usuarios"
+    $u = $usuarios | Where-Object { $_.id -eq $UsuarioId } | Select-Object -First 1
+    if (-not $u -or $u.statusConta -ne "Ativo") { return $false }
+    if ($u.perfilBase -eq "Administrador") { return $true }
+    $matriz = Get-UserPermissions -UsuarioId $UsuarioId
+    if ($matriz.historico -and $null -ne $matriz.historico.visualizar -and $matriz.historico.visualizar -is [bool]) { return [bool]$matriz.historico.visualizar }
+    return (Test-Permissao -UsuarioId $UsuarioId -Modulo "manutencao" -Acao "visualizar")
 }
 
 function Test-Administrador {

@@ -2,6 +2,7 @@
 
 namespace App\Services\Importacao;
 
+use App\Services\Regras;
 use App\Services\ListaOs;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -61,6 +62,7 @@ class ImportadorGrids
             if (! $this->temVao()) {
                 $res['podaLinearSemVao'] = true;
             }
+            $regrasExec = Regras::ativas('executada');
             $cols = ['Número OS', 'OSPrimária(int)', 'COORDENADA UTM X', 'COORDENADA UTM Y', 'OSFechada?', 'CodSetor', 'Localidade', 'DescEsquema', 'Observação', 'Observacao',
                 'Prioridade', 'Data de criação', 'Início Execução', 'Término Execução', 'TIPO_EQUIPE_EXEC', 'Complemento de Localização', 'CODIGO DA ARVORE', 'Trecho', 'protecao'];
             $novos = [];
@@ -142,11 +144,11 @@ class ImportadorGrids
                 $qPrev = $qtdMoPend[$osPrimaria ?? $osChave] ?? self::zero();   // Previsto vem da OS-mae, se houver
                 $qReal = $qtdMoExec[$osChave] ?? self::zero();
                 $posteId = RegrasGrid::posteDoComplemento($l['Complemento de Localização']);
-                if (! $soPrevisto && $this->temVao() && self::podaLinear($l['DescEsquema'])) {
-                    $qReal = ['poda' => 0.0, 'limpeza' => $this->limpezaPodaLinear($posteId), 'estrutura' => 0.0];
-                    $qPrev = self::zero();
-                    $mo = ['tipoServico' => 'Limpeza de Faixa', 'detalhe' => $mo['detalhe']];
-                    $res['podaLinear']++;
+                // v3.33 - Regras de importacao (Configuracao): a Poda linear virou regra editavel
+                if ($regrasExec) {
+                    [$qReal, $qPrev, $tipoReg] = Regras::naImportacao($regrasExec, (string) $l['DescEsquema'], (string) $mo['tipoServico'], $qReal, $qPrev,
+                        $this->vaoKm($posteId), $soPrevisto, $res);
+                    $mo = ['tipoServico' => $tipoReg, 'detalhe' => $mo['detalhe']];
                 }
                 $reg = [
                     'id' => $osChave, 'origem' => 'SGM', 'osPrimaria' => $osPrimaria, 'idVera' => RegrasGrid::idVeraDaGrid($l['CODIGO DA ARVORE']),
@@ -199,6 +201,10 @@ class ImportadorGrids
             $tabEsq = $this->tabelaEsquemas();
             $res = ['pendenteTotal' => 0, 'pendenteSemMO' => 0, 'pendentePrevistoPorEsquema' => 0, 'pendenteSemCoordenada' => 0, 'pendentePlotadas' => 0,
                 'pendenteAproximadas' => 0, 'pendenteSemPosicao' => 0, 'podaLinear' => 0];
+            if (! $this->temVao()) {
+                $res['podaLinearSemVao'] = true;
+            }
+            $regrasPend = Regras::ativas('pendente');
             $cols = ['OSNumero', 'CodEsquema', 'COORDENADA UTM X', 'COORDENADA UTM Y', 'CodEstado', 'CodSetor', 'Localidade', 'DescEsquema', 'Observação', 'Observacao',
                 'CodPrioridade', 'DataCriação', 'TIPO_EQUIPE_EXEC', 'Complemento de Localização', 'CODIGO DA ARVORE', 'Trecho', 'protecao'];
             $novos = [];
@@ -243,13 +249,10 @@ class ImportadorGrids
                 }
                 $qReal = $qtdMoExec[$osChave] ?? self::zero();
                 $posteId = RegrasGrid::posteDoComplemento($l['Complemento de Localização']);
-                if ($this->temVao() && self::podaLinear($l['DescEsquema'])) {
-                    $lim = $this->limpezaPodaLinear($posteId);
-                    $tinhaReal = array_sum($qReal) > 0;
-                    $qPrev = ['poda' => 0.0, 'limpeza' => $lim, 'estrutura' => 0.0];
-                    $qReal = ['poda' => 0.0, 'limpeza' => $tinhaReal ? $lim : 0.0, 'estrutura' => 0.0];
-                    $mo = ['tipoServico' => 'Limpeza de Faixa', 'detalhe' => $mo['detalhe']];
-                    $res['podaLinear']++;
+                if ($regrasPend) {
+                    [$qReal, $qPrev, $tipoReg] = Regras::naImportacao($regrasPend, (string) $l['DescEsquema'], (string) $mo['tipoServico'], $qReal, $qPrev,
+                        $this->vaoKm($posteId), false, $res);
+                    $mo = ['tipoServico' => $tipoReg, 'detalhe' => $mo['detalhe']];
                 }
                 $reg = [
                     'id' => $osChave, 'origem' => 'SGM', 'osPrimaria' => null, 'idVera' => RegrasGrid::idVeraDaGrid($l['CODIGO DA ARVORE']),
@@ -909,9 +912,15 @@ class ImportadorGrids
         return $this->temVao ??= DB::table('vao_postes')->exists();
     }
 
-    /** PODA LINEAR: limpeza = Rota (km) do vao do poste x 15.000 m2. Poste sem vao -> 0. */
-    private function limpezaPodaLinear(?string $poste): float
+    /**
+     * [Vão (km)] das regras: Rota (km) do vao do poste; poste sem vao -> 0; Vao nunca importado -> null
+     * (as regras que usam o Vao ficam ignoradas e o resumo avisa, como no legado).
+     */
+    private function vaoKm(?string $poste): ?float
     {
+        if (! $this->temVao()) {
+            return null;
+        }
         $k = trim((string) $poste);
         if ($k === '') {
             return 0.0;
@@ -920,7 +929,7 @@ class ImportadorGrids
             $this->cacheVao[$k] = DB::table('vao_postes')->where('poste_id', $k)->value('rota_km');
         }
 
-        return $this->cacheVao[$k] === null ? 0.0 : (float) $this->cacheVao[$k] * 15000.0;
+        return $this->cacheVao[$k] === null ? 0.0 : (float) $this->cacheVao[$k];
     }
 
     // =============================================================== utilidades
@@ -945,11 +954,6 @@ class ImportadorGrids
         return ['previsto' => round($prev['poda'], 2), 'realizado' => round($real['poda'], 2),
             'previstoPoda' => round($prev['poda'], 2), 'previstoLimpeza' => round($prev['limpeza'], 2), 'previstoEstrutura' => round($prev['estrutura'], 2),
             'realizadoPoda' => round($real['poda'], 2), 'realizadoLimpeza' => round($real['limpeza'], 2), 'realizadoEstrutura' => round($real['estrutura'], 2)];
-    }
-
-    private static function podaLinear($desc): bool
-    {
-        return str_contains(mb_strtoupper((string) $desc), 'PODA LINEAR');
     }
 
     private static function tipoEquipeExec($v): string

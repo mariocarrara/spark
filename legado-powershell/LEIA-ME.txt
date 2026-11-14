@@ -1,6 +1,104 @@
 ﻿SPARK — Sistema Integrado de Gestão de Vegetação, Proteção e Programação
 Grupo Energisa
 
+v3.33.0 - Regras de importação editáveis (Configuração > Regras de importação)
+ - Nova aba em Configuração: lista de regras (ordem, quando, então, aplica em, ativa/desativada) e editor com QUANDO (condições), ENTÃO (ações com fórmula), SIMULAÇÃO e histórico de alterações.
+ - Fórmulas: números, [campos], + - * / ( ), comparações (> < >= <= = <>) e as funções SE, SOMA, ARREDONDAR, MAXIMO, MINIMO, ABS. Argumentos separados por ponto e vírgula; decimais com vírgula. Clique nos campos/funções para inserir.
+ - A Poda linear (que estava fixa no programa) virou duas regras editáveis: "Poda linear — grid executada" e "Poda linear — grid pendente", criadas sozinhas na primeira vez, com o mesmo resultado de antes.
+ - As regras valem a partir da PRÓXIMA importação da grid executada ou pendente; OS já gravadas não mudam. Regras que usam [Vão (km)] são ignoradas enquanto o Vão não for importado (a tela avisa).
+ - Quem vê a aba: administrador (e quem tiver a caixa "Regras de importação (aba da Configuração)" marcada na matriz de permissões). Toda criação/alteração/exclusão fica no histórico com usuário e data.
+ - REINICIE o Controller (iniciar.bat) para valer.
+
+v3.32.1 - Clique na árvore da VERA de volta, com toque folgado e dados completos
+ - Na v3.32.0 o clique na árvore parou de abrir (o grupo de árvores não repassava o clique). Agora o clique é tratado no mapa: pega a árvore desenhada mais perto do toque, até 20 pixels (VERA_TOQUE_PX em view/js/app.js), no pé ou no meio da copa.
+ - O quadro mostra ID VERA, Espécie, Alimentador, Cidade, Latitude e Longitude (antes só ID e espécie). Para isso o Controller passou a mandar também alimentador e cidade de cada árvore: REINICIE o Controller.
+
+v3.32.0 - VERA: só a partir do zoom 12, só a área visível, árvore menor e ícone novo no menu
+ - Com o estado todo aberto as 141 mil árvores travavam o mapa. Agora o SPARK guarda os pontos numa grade e só desenha as da tela (com folga), a partir do zoom 12, no máximo 5.000 por vez; abaixo do zoom 12 a nota da camada avisa para aproximar. Mexeu/aproximou, redesenha sozinho.
+ - Árvore um pouco menor (raio 7). O ícone da camada no menu agora é a mesma árvore (copa verde, tronco marrom), em tamanho pequeno.
+ - Para mudar o zoom mínimo: VERA_ZOOM_MIN em view/js/app.js (e VERA_MAX_DESENHO para o limite por tela).
+
+v3.31.0 - Árvore da VERA refeita para o desenho SVG do mapa
+ - Causa dos ícones "sem tronco": o mapa desenha os pontos em SVG, e o desenho anterior (várias cores) só funcionava em canvas, então caía numa copa verde lisa com um traço. Agora a árvore é UM contorno só (copa em nuvem + tronco), preenchido com degradê de corte seco: verde em cima, tronco marrom embaixo, com halo branco por fora. Tamanho fixo. O ponto geográfico é o pé do tronco.
+
+v3.30.1 - Árvore da VERA com tamanho fixo (igual em qualquer zoom)
+
+v3.30.0 - Árvore da VERA: tronco visível e tamanho por zoom
+ - O tronco marrom agora aparece por inteiro embaixo da copa (antes ficava escondido atrás dela) e o desenho cresce com o zoom (pequeno de longe, grande de perto), com halo branco para destacar no satélite.
+
+v3.29.0 - Árvore da VERA mais desenhada
+ - Copa verde em três lóbulos com contorno verde-escuro e um brilho, tronco marrom e um halo branco fino em volta para aparecer sobre a imagem de satélite. Tamanho maior (raio 6).
+
+v3.28.0 - VERA com ícone de árvore
+ - As árvores da VERA deixam de ser bolinhas: agora são uma arvorezinha (copa redonda + tronco), em verde com contorno verde-escuro, um pouco maiores (raio 4,5 em vez de 3). O ícone da camada na lista também virou árvore.
+
+v3.27.0 - Formas no mapa: Trafos em triângulo, o resto em quadrado
+ - Trafos continuam TRIÂNGULO. Ativos, Proteções, Reguladores e Capacitores agora são QUADRADOS, no mapa e na legenda (a legenda das Proteções trocou ▲ por ■).
+ - Corrigido: no mapa esses pontos apareciam como bolinha quando o Leaflet usava o desenho SVG; agora a forma vale nos dois modos (canvas e SVG).
+
+v3.26.1 - Correção da Medição de terceiros e caixas do administrador
+ - Corrigido: a Medição de terceiros dava "GET /api/medicao/mo -> 404" (o caminho estava com /api duplicado).
+ - As caixas Visualizar dos itens de menu (Visão Geral, Histórico, Medição, Importação) agora podem ser mudadas também na linha de um Administrador; a escolha marcada vale para todos. Padrão sem escolha: Medição só Administrador.
+
+v3.26.0 - Controle de acesso por usuário em TODAS as opções do menu
+ - Na matriz de Usuários & Permissões entraram as linhas que faltavam, cada uma com a caixa Visualizar: Visão Geral (menu), Histórico de Podas (menu), Medição de terceiros (menu) e Importação de Bases (menu). Junto com Manutenção, Produtividade, Alertas, Programação, Prioridade, Pontos Nix, Prefeituras, Gestão de Bases, Metas e Configuração, todo item do menu passa a ter controle por usuário.
+ - Ninguém perde acesso na atualização: enquanto a caixa nunca foi marcada/desmarcada vale o padrão de antes (Visão Geral = todos; Histórico = quem vê Manutenção; Importação = quem tem Importar em algum módulo; Medição = só Administrador). Depois de marcar/desmarcar, vale a escolha.
+ - Administrador sempre vê Visão Geral, Histórico, Medição e Importação. O Controller também usa a caixa em Histórico (GET /api/historico) e Medição (GET /api/medicao/mo); Visão Geral e Importação escondem o item do menu e os dados seguem protegidos pelos módulos de sempre.
+ - Se quiser liberar a Medição para alguém que não é administrador: Configuração › Usuários & Permissões › marcar "Medição de terceiros (menu)" › Salvar.
+
+v3.25.0 - Produtividade: aba Estruturas
+ - Na Produtividade, nova aba "Estruturas (un.)" ao lado de Poda e Limpeza de faixa: mostra quantas estruturas cada equipe executou, por Dia/Semana/Mês, com os mesmos filtros da tela (período, departamento, regional, polo, Própria/Terceira, equipe).
+ - Sem meta nem % (as equipes não têm meta de estrutura): só o executado, o total por equipe e o total geral. Só aparecem equipes que executaram estrutura no período. Botão "Baixar Excel".
+ - Quantidade = estruturas das OS executadas (soma das linhas da MO). Não precisa reimportar nada.
+
+v3.24.0 - Medição de terceiros (menu novo, só administrador)
+ - Menu "Medição de terceiros": visível e acessível só para Administrador (o Controller também recusa os demais: GET /api/medicao/mo).
+ - Lista tudo que as equipes TERCEIRAS executaram (equipe com Própria/Terceira = Terceira no cadastro), uma linha por recurso aplicado na OS, com: Equipe, Terceiro, OS, OS primária, execução, localidade, regional, nº da obra, Recurso (MO 1), recurso específico (MO 2), Qtd previsto e Qtd realizado.
+ - Qtd previsto é da OS, por isso aparece só na 1ª linha de cada OS. OS sem linha de MO aparecem sem recurso, com o realizado da própria OS.
+ - Filtros: período de execução, terceiro, equipe, regional, recurso e busca. Resumos por equipe, recurso e terceiro.
+ - Botão "Baixar relatório completo (Excel)": todas as linhas do filtro + abas de resumo (terceiro, equipe, recurso) + aba Sobre.
+ - Fora do SPARK de propósito (LGPD): preços, código do recurso (SIAGO), contrato/CC/subconta e auditoria/glosa.
+ - Precisa das linhas de MO da v3.23.0: reimporte o SGM (grid + MO) para preencher. Arquivos novos: controller/routes/medicao.ps1, view/js/medicao.js.
+
+v3.23.0 - Linhas da MO guardadas (base da futura medição de terceiros)
+ - Cada importação da MO agora também grava as LINHAS da planilha, uma por recurso apontado na OS, em arquivos próprios: model/mo_linhas_executada.json (ao importar a grid executada + MO_EXECUTADA) e model/mo_linhas_pendente.json (ao importar a grid pendente + MO_PENDENTE). Cada linha traz: OS, DE-PARA RECURSOS.MO 1 (grupo), DE-PARA RECURSOS.MO 2 (tipo) e as três quantidades como vieram (Qtd Poda, Qtd Limpeza (M²), Qtd Estrutura). Nada é somado: a soma por OS continua nos campos previsto/realizado da OS.
+ - Arquivos separados da lista de OS (o navegador não baixa isso; não pesa o mapa). Cada importação SUBSTITUI o arquivo da sua origem. A importação de histórico por plano NÃO mexe neles. "Apagar tudo" também remove.
+ - O resumo da importação mostra "moLinhasGravadas". Se a gravação falhar, a importação das OS segue normal e o prompt do Controller avisa.
+ - Ainda não há tela para isso: é a base da página de medição de terceiros (recurso detalhado e código do SIAGO ficam fora, por decisão do Mario).
+ - Reiniciar o Controller e reimportar as MO + grids para gerar os arquivos.
+
+v3.22.0 - Recurso (MO 1) e Nº da obra na grid, filtros e Excel
+ - O Controller passa a gravar na OS dois campos novos: "recursoMo" = DE-PARA RECURSOS.MO 1 das planilhas de MO (valores distintos da OS, juntos por " | " quando há mais de um, ex.: "Limpeza de Faixa | Poda com Recolha") e "numObra" = coluna "Num. Obra" das grids (executada e pendente). Para recursoMo, a OS executada usa as linhas da MO_EXECUTADA da própria OS (senão as da MO_PENDENTE da OS-mãe); a pendente usa a MO_PENDENTE (senão a MO_EXECUTADA).
+ - Mapa de Manutenção: colunas "Recurso (MO 1)" e "Nº da obra" na grid (podem ser ocultadas em Colunas), filtros "Recurso (MO 1)" e "Nº da obra" (seleção múltipla, grupo Sistemas; o filtro de recurso acha a OS se QUALQUER um dos recursos dela estiver marcado), busca da grid inclui os dois, linhas no popup e colunas no Excel "Exportar OS".
+ - IMPORTANTE: reiniciar o Controller e REIMPORTAR as MO e as grids SGM (executada e pendente) para as OS receberem os campos. Se a grid não tiver a coluna "Num. Obra", o campo fica vazio sem erro. OS do SIGOD ficam em branco.
+
+v3.21.0 - Criticidade da OS (prioridade do SGM)
+ - O Controller passa a GUARDAR o valor da coluna Prioridade (grid executada) / CodPrioridade (grid pendente) em cada OS do SGM, em maiúsculas (ex.: ALTA, URGENTE, EMERGENCIAL). Antes só virava o sim/não de "Prioridade EW" e o valor se perdia. A "Prioridade EW" continua igual.
+ - Mapa de Manutenção: filtro "Criticidade (SGM)" (grupo Localização, seleção múltipla), coluna "Criticidade (SGM)" na grid (colorida: emergencial vermelho, urgente amarelo, alta azul; ordena por gravidade), linha "Criticidade" no popup e coluna no Excel "Exportar OS".
+ - IMPORTANTE: reiniciar o Controller e REIMPORTAR as grids SGM (executada e pendente); as OS já gravadas só ganham a criticidade na próxima importação. OS do SIGOD ficam em branco.
+ - Ctrl+F5 no navegador.
+
+v3.20.0 - Aviso de novos pedidos de cadastro (sem recarregar a tela)
+ - Para quem pode aprovar cadastros (Usuários > Editar): o SPARK consulta o Controller a cada 45 s (e quando a aba volta ao foco) e, se aparecer pedido novo, mostra uma bolinha laranja com o número no menu Configuração (e na aba Usuários & Permissões) e um aviso na tela, sem tirar você de onde está.
+ - Se você já estiver na aba Usuários & Permissões, a lista de pedidos atualiza sozinha (exceto com janela aberta ou campo em digitação).
+ - Só front-end: Ctrl+F5. A base serve para outros avisos no futuro.
+
+v3.19.0 - Filtro "Departamento da equipe" no mapa
+ - Painel Filtros do Mapa de Manutenção > grupo Equipe: novo combo de seleção múltipla "Departamento da equipe" (departamento do cadastro da equipe executora; OS sem equipe ou equipe sem departamento não aparecem quando há departamento marcado). Entra no contador do grupo, no "Limpar todos os filtros" e na grid/Excel filtrados.
+ - Só front-end: Ctrl+F5.
+
+v3.18.0 - Solicitar cadastro com senha própria
+ - Na tela de login, "Solicitar cadastro" agora pede e-mail, nome, senha e repetição da senha, com medidor de força (Fraca / Aceitável / Boa / Forte) e conferência das duas senhas.
+ - Regra da senha (no navegador e, de novo, no Controller): mínimo 8 caracteres, pelo menos uma letra e um número, sem senhas comuns (12345678, senha123 etc.), sem repetir o mesmo caractere e sem conter o e-mail.
+ - Em Usuários & Permissões, a solicitação mostra nome e se a senha foi escolhida pela pessoa. Nesse caso o admin só confere nome e perfil e aprova, sem digitar senha (a da pessoa é mantida). Pedido sem senha continua funcionando como antes (admin define).
+ - A regra vale só para quem escolhe a senha no pedido. Trocar senha em "Minha conta" e redefinir pelo admin seguem com mínimo de 3 caracteres.
+ - Reiniciar o Controller (rota /api/usuarios mudou) e Ctrl+F5.
+
+v3.17.0 - Excel da grid do mapa: Própria/Terceira e tipo de manutenção
+ - Duas colunas novas no Excel "Exportar OS", logo depois de "Equipe executora": "Própria/Terceira" (do cadastro da equipe; todas as OS do SIGOD saem como Própria) e "Tipo de manutenção" (SGM = Programada; SIGOD = Plantão).
+ - OS do SGM cuja equipe não está no cadastro, ou sem o campo, ficam com Própria/Terceira em branco.
+ - Só front-end: Ctrl+F5.
+
 v3.16.0 - Incluir ponto Nix à mão
  - Menu Pontos Nix: botão "+ Incluir ponto Nix" (elemento, latitude, longitude, alimentador, regional, conjunto, data-hora, PPF). Aparece para quem tem a permissão "Criar" em Pontos Nix (Configuração > Usuários > permissões; a coluna Criar agora está liberada nessa linha). O ponto entra na base atual, marcado "manual", e aparece no mapa com o raio de alerta.
  - Pontos manuais sobrevivem quando uma nova planilha substitui a base. Quem tem a permissão "Excluir" em Pontos Nix vê o botão "Apagar" nos pontos manuais (só os manuais; os da planilha seguem sendo trocados pela planilha ou pelo "apagar base" de quem tem Importar).

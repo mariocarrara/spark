@@ -32,6 +32,7 @@ CREATE TABLE permissoes (
   usuario_id TEXT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
   modulo     TEXT NOT NULL,   -- manutencao, produtividade, metas, programacao, prefeituras, gestaoBases, alertas, prioridade, nix, usuarios
   acao       TEXT NOT NULL,   -- visualizar | criar | editar | excluirStatus | importar
+  valor      BOOLEAN NOT NULL DEFAULT true,   -- false = caixa de menu DESMARCADA de proposito (v3.26: sem linha = vale o padrao)
   PRIMARY KEY (usuario_id, modulo, acao)
 );
 
@@ -184,6 +185,10 @@ CREATE TABLE ajuda_faq (
   id TEXT PRIMARY KEY, categoria TEXT, pergunta TEXT NOT NULL, resposta TEXT NOT NULL, palavras TEXT,
   ordem INT NOT NULL DEFAULT 0, ativo BOOLEAN NOT NULL DEFAULT true, excluido BOOLEAN NOT NULL DEFAULT false
 );
+
+-- Regras de importacao editaveis (v3.33; model/regras.json do legado): a regra inteira em JSON + ordem
+CREATE TABLE regras (id TEXT PRIMARY KEY, ordem INT NOT NULL DEFAULT 0, dados JSONB NOT NULL);
+CREATE TABLE regras_historico (id BIGSERIAL PRIMARY KEY, em TIMESTAMPTZ NOT NULL DEFAULT now(), usuario TEXT, regra_id TEXT, nome TEXT, acao TEXT, antes JSONB, depois JSONB);
 
 CREATE TABLE configuracoes (                       -- alertas_config, app_rl_config, raio do Nix ...
   chave          TEXT PRIMARY KEY,

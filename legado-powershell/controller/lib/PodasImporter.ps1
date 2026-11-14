@@ -49,6 +49,15 @@ function ConvertTo-TextoCorrigido {
     }
     return $t
 }
+function Get-PrioridadeSgm {
+    <# v3.21.0 - criticidade da OS no SGM (Prioridade / CodPrioridade da grid: ALTA, URGENTE, EMERGENCIAL...): texto em
+       MAIÚSCULAS sem espaços nas pontas; vazio / #N/A -> $null. Guarda o valor original (o "Prioridade EW" Sim/Não continua à parte). #>
+    param($Valor)
+    $t = ([string]$Valor).Trim().ToUpper()
+    if ($t -eq '' -or $t -eq '#N/A') { return $null }
+    return $t
+}
+
 function Get-TextoOuNulo {
     <# v2.15.7 - texto da celula da grid; vazio / #N/A -> $null #>
     param($Valor)
@@ -268,6 +277,60 @@ function Get-ContagemMO {
         $osChave = $os.Trim()
         if ($dic.ContainsKey($osChave)) { $dic[$osChave]++ } else { $dic[$osChave] = 1 }
     }
+    return $dic
+}
+
+function Save-MoLinhas {
+    <# v3.23.0 - guarda as LINHAS da MO (uma por recurso apontado na OS), cada uma com as quantidades que vieram na linha, em
+       model/mo_linhas_<origem>.json (origem = 'executada' ou 'pendente'). Arquivo SEPARADO da lista de OS (que o navegador
+       baixa inteira): só a futura página de medição de terceiros vai ler. Cada importação da MO SUBSTITUI o arquivo da sua origem.
+       Formato compacto por colunas: {"origem","geradoEm","colunas":[...],"linhas":[[os,grupo,tipo,qtdPoda,qtdLimpeza,qtdEstrutura],...]}
+       Escrito à mão (StringBuilder) porque ConvertTo-Json do PS 5.1 é lento para centenas de milhares de linhas.
+       Nunca lança erro (a importação das OS não pode falhar por causa disso). Devolve @{ origem; linhas } ou $null. #>
+    param([System.Collections.Generic.List[object]]$LinhasMO, [string]$Origem)
+    try {
+        $inv = [System.Globalization.CultureInfo]::InvariantCulture
+        $esc = { param($t) $x = ([string]$t).Trim(); if ($x -eq '#N/A') { $x = '' }; return '"' + (($x.Replace('\', '\\').Replace('"', '\"') -replace '[\x00-\x1F]', ' ')) + '"' }
+        $num = { param($t) $v = ConvertTo-DoubleSeguro -Texto ([string]$t); if ($null -eq $v) { return '0' }; return ([double]$v).ToString('0.####', $inv) }
+        $sb = New-Object System.Text.StringBuilder
+        [void]$sb.Append('{"origem":"' + $Origem + '","geradoEm":"' + (Get-IsoNow) + '","colunas":["os","grupo","tipo","qtdPoda","qtdLimpeza","qtdEstrutura"],"linhas":[')
+        $n = 0
+        foreach ($l in $LinhasMO) {
+            $os = ([string]$l['Número OS']).Trim()
+            if ($os -eq '') { continue }
+            if ($n -gt 0) { [void]$sb.Append(',') }
+            [void]$sb.Append('[' + (& $esc $os) + ',' + (& $esc $l['DE-PARA RECURSOS.MO 1']) + ',' + (& $esc $l['DE-PARA RECURSOS.MO 2']) + ',' +
+                (& $num $l['Qtd Poda']) + ',' + (& $num $l['Qtd Limpeza (M²)']) + ',' + (& $num $l['Qtd Estrutura']) + ']')
+            $n++
+        }
+        [void]$sb.Append(']}')
+        $path = Get-EntityPath -Entity ("mo_linhas_" + $Origem)
+        $tmp = "$path.tmp"
+        [System.IO.File]::WriteAllText($tmp, $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))
+        Move-Item -LiteralPath $tmp -Destination $path -Force
+        return @{ origem = $Origem; linhas = $n }
+    } catch {
+        Write-Host "[mo_linhas] aviso: nao consegui gravar as linhas da MO ($Origem): $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Get-RecursosMO {
+    <# v3.22.0 - "DE-PARA RECURSOS.MO 1" de TODAS as linhas da OS na MO (valores distintos, ordenados, juntos por " | "),
+       ex.: "Limpeza de Faixa | Poda com Recolha". osChave -> texto. #>
+    param([System.Collections.Generic.List[object]]$LinhasMO, [string]$CampoOS)
+    $acum = @{}
+    foreach ($linha in $LinhasMO) {
+        $os = $linha[$CampoOS]
+        if ([string]::IsNullOrWhiteSpace($os)) { continue }
+        $rec = ([string]$linha['DE-PARA RECURSOS.MO 1']).Trim()
+        if ($rec -eq '' -or $rec -eq '#N/A') { continue }
+        $osChave = $os.Trim()
+        if (-not $acum.ContainsKey($osChave)) { $acum[$osChave] = New-Object 'System.Collections.Generic.SortedSet[string]' }
+        [void]$acum[$osChave].Add($rec)
+    }
+    $dic = @{}
+    foreach ($k in $acum.Keys) { $dic[$k] = ($acum[$k] -join ' | ') }
     return $dic
 }
 
@@ -544,7 +607,7 @@ function Get-OsSnapMesclado {
     param($OsIds, $SnapAtual, $ExecAtual, $Enviados)
     $ids = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($i in @($OsIds)) { $s = ([string]$i).Trim(); if ($s) { [void]$ids.Add($s) } }
-    $campos = 'id','origem','statusOS','tipoServico','tipoEquipeNecessaria','tipoEquipeExec','trecho','osPrimaria','alimentador','conjunto','protecaoId','localidade','dataAbertura','dataExecucao','previsto','realizado','previstoPoda','previstoLimpeza','previstoEstrutura','realizadoPoda','realizadoLimpeza','realizadoEstrutura','observacao','descEsquema','statusBase'
+    $campos = 'id','origem','statusOS','tipoServico','tipoEquipeNecessaria','tipoEquipeExec','trecho','osPrimaria','alimentador','conjunto','protecaoId','localidade','dataAbertura','dataExecucao','previsto','realizado','previstoPoda','previstoLimpeza','previstoEstrutura','realizadoPoda','realizadoLimpeza','realizadoEstrutura','observacao','descEsquema','prioridade','numObra','recursoMo','statusBase'
     $snap = New-Object System.Collections.Generic.List[object]
     $tem = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($x in @($SnapAtual)) {
@@ -662,6 +725,10 @@ function Import-PodasExecutado {
         $dicMoExecutada = Get-DicionarioMO -LinhasMO $moExecutada -CampoOS 'Número OS'
         $tabelaEW = Get-TabelaPrioridadeEW
         $qtdMoExecutada = Get-QuantidadesMO -LinhasMO $moExecutada -CampoOS 'Número OS'
+        $recMoExecutada = Get-RecursosMO -LinhasMO $moExecutada -CampoOS 'Número OS'
+        $recMoPendente = @{}
+        $moLinhasInfo = $null
+        if ($Plano -le 0) { $moLinhasInfo = Save-MoLinhas -LinhasMO $moExecutada -Origem 'executada' }   # v3.23.0 (histórico por plano não mexe nas linhas da MO)
 
         # MO_PENDENTE é OPCIONAL aqui: só serve pra calcular o "Previsto" (a
         # OS executada busca a quantidade prevista na MO da OS-mãe/
@@ -674,15 +741,17 @@ function Import-PodasExecutado {
             $moPendenteLinhas = (Read-XlsxColunas -Bytes $MoPendenteBytes -Colunas $colunasMO `
                 -ProgressCallback $ProgressCallback -ProgressLabel 'MO_PENDENTE' -ProgressFase 'mo').linhas
             $qtdMoPendente = Get-QuantidadesMO -LinhasMO $moPendenteLinhas -CampoOS 'Número OS'
+            $recMoPendente = Get-RecursosMO -LinhasMO $moPendenteLinhas -CampoOS 'Número OS'
             $temMoPendente = $true
         }
 
-        $colunasGridExec = @('Número OS','OSPrimária(int)','COORDENADA UTM X','COORDENADA UTM Y','OSFechada?','CodSetor','Localidade','DescEsquema','Observação','Observacao','Prioridade','Data de criação','Início Execução','Término Execução','TIPO_EQUIPE_EXEC','Complemento de Localização','CODIGO DA ARVORE','Trecho','protecao')
+        $colunasGridExec = @('Num. Obra','Número OS','OSPrimária(int)','COORDENADA UTM X','COORDENADA UTM Y','OSFechada?','CodSetor','Localidade','DescEsquema','Observação','Observacao','Prioridade','Data de criação','Início Execução','Término Execução','TIPO_EQUIPE_EXEC','Complemento de Localização','CODIGO DA ARVORE','Trecho','protecao')
         $gridExecutado = (Read-XlsxColunas -Bytes $GridExecutadoBytes -Colunas $colunasGridExec `
             -ProgressCallback $ProgressCallback -ProgressLabel 'SGM_EXECUTADO' -ProgressFase 'grid').linhas
 
         $novos = New-Object System.Collections.Generic.List[object]
         $resumo = [ordered]@{ executadoTotal = $gridExecutado.Count; executadoSemMO = 0; executadoSemCoordenada = 0; executadoPlotadas = 0; previstoCalculado = $temMoPendente; executadoAproximadas = 0; executadoSemPosicao = 0; executadoSoPrevisto = 0 }
+        if ($moLinhasInfo) { $resumo['moLinhasGravadas'] = $moLinhasInfo.linhas }
         $intervaloPlano = $null
         if ($Plano -gt 0) {
             $intervaloPlano = Get-PlanoIntervalo -Plano $Plano
@@ -710,6 +779,7 @@ function Import-PodasExecutado {
         $totalGrid = $gridExecutado.Count
         $ultimoProgressoCruzamento = [DateTime]::MinValue
         $tabelaVao = Get-VaoPostesKm
+        $regrasImp = @(Get-RegrasAtivas -Base 'executada')
         $resumo['podaLinear'] = 0
         if (-not $tabelaVao) { $resumo['podaLinearSemVao'] = $true }
         $i = 0
@@ -803,19 +873,18 @@ function Import-PodasExecutado {
             # v2.15.4 - PODA LINEAR (como o BI): zera os recursos da MO e a limpeza de
             # faixa vem do tamanho do vao (Rota km x 15.000 m2) do poste da OS.
             # So vale pra OS que tem linha de MO executada.
-            if ((-not $soPrevisto) -and $tabelaVao -and (Test-EsquemaPodaLinear $linha['DescEsquema'])) {
-                $limVao = Get-LimpezaPodaLinearM2 -TabelaVao $tabelaVao -PosteId (Get-PosteIdDoComplemento $linha['Complemento de Localização'])
-                $qReal = @{ poda = 0.0; limpeza = $limVao; estrutura = 0.0 }
-                $qPrev = @{ poda = 0.0; limpeza = 0.0; estrutura = 0.0 }
-                $mo = @{ tipoServico = 'Limpeza de Faixa'; detalhe = $mo.detalhe }
-                $resumo['podaLinear'] = [int]$resumo['podaLinear'] + 1
+            # v3.33.0 - as regras (poda linear etc.) agora sao dados editaveis em Configuracao > Regras de importacao
+            if ($regrasImp.Count -gt 0) {
+                $rr = Invoke-RegrasImportacao -Regras $regrasImp -Linha $linha -QReal $qReal -QPrev $qPrev -Mo $mo -TabelaVao $tabelaVao -PosteId (Get-PosteIdDoComplemento $linha['Complemento de Localização']) -SoPrevisto $soPrevisto -Resumo $resumo
+                $qReal = $rr.qReal; $qPrev = $rr.qPrev; $mo = $rr.mo
             }
 
             $reg = [ordered]@{
                 id = $osChave; origem = 'SGM'; osPrimaria = $osPrimaria; idVera = (Get-IdVeraDaGrid $linha)
                 statusOS = (ConvertTo-StatusExecutado -OsFechada $linha['OSFechada?'])
                 tipoServico = $mo.tipoServico; tipoEquipeNecessaria = $null; posteId = (Get-PosteIdDoComplemento $linha['Complemento de Localização']); tipoEquipeExec = $(if ([string]::IsNullOrWhiteSpace([string]$linha['TIPO_EQUIPE_EXEC'])) { 'Livre' } else { ([string]$linha['TIPO_EQUIPE_EXEC']).Trim() })
-                prioridadeEW = (ConvertTo-PrioridadeEW -CodPrioridade $linha['Prioridade'] -QtdPoda ($qPrev.poda + $qReal.poda) -QtdLimpeza ($qPrev.limpeza + $qReal.limpeza) -QtdEstrutura ($qPrev.estrutura + $qReal.estrutura) -TipoServico ([string]$mo.tipoServico) -Tabela $tabelaEW); equipeId = (Get-EquipeExecutoraDoNumeroOS -OsChave $osChave)
+                numObra = (Get-TextoOuNulo $linha['Num. Obra']); recursoMo = $(if ($recMoExecutada.ContainsKey($osChave)) { $recMoExecutada[$osChave] } elseif ($recMoPendente.ContainsKey($chavePrevisto)) { $recMoPendente[$chavePrevisto] } else { $null })
+                prioridade = (Get-PrioridadeSgm $linha['Prioridade']); prioridadeEW = (ConvertTo-PrioridadeEW -CodPrioridade $linha['Prioridade'] -QtdPoda ($qPrev.poda + $qReal.poda) -QtdLimpeza ($qPrev.limpeza + $qReal.limpeza) -QtdEstrutura ($qPrev.estrutura + $qReal.estrutura) -TipoServico ([string]$mo.tipoServico) -Tabela $tabelaEW); equipeId = (Get-EquipeExecutoraDoNumeroOS -OsChave $osChave)
                 dataAbertura = (ConvertFrom-SerialExcelParaData -Valor $linha['Data de criação']); dataExecucao = $dataExec
                 ativo = $null; alimentador = $linha['CodSetor']; conjunto = $null; localidade = (Get-NomeLocalidadeSemCodigo -Texto $linha['Localidade']); protecaoId = (Get-TextoOuNulo $linha['protecao']); trecho = (Get-TrechoDaGrid $linha['Trecho'])
                 localizacao = [ordered]@{ lat = $latV; lng = $lngV; fonte = 'GRID_EXECUTADO'; aproximada = $false }
@@ -873,6 +942,9 @@ function Import-PodasPendente {
         $dicMoPendente = Get-DicionarioMO -LinhasMO $moPendente -CampoOS 'Número OS'
         $tabelaEW = Get-TabelaPrioridadeEW
         $qtdMoPendente = Get-QuantidadesMO -LinhasMO $moPendente -CampoOS 'Número OS'
+        $recMoPendente = Get-RecursosMO -LinhasMO $moPendente -CampoOS 'Número OS'
+        $recMoExecutada = @{}
+        $moLinhasInfo = Save-MoLinhas -LinhasMO $moPendente -Origem 'pendente'   # v3.23.0
 
         # MO_EXECUTADA é OPCIONAL aqui: uma OS pendente às vezes já tem algum
         # apontamento de execução parcial (ou acabou de fechar e ainda não
@@ -883,14 +955,16 @@ function Import-PodasPendente {
             $moExecutadaLinhas = (Read-XlsxColunas -Bytes $MoExecutadaBytes -Colunas $colunasMO `
                 -ProgressCallback $ProgressCallback -ProgressLabel 'MO_EXECUTADA' -ProgressFase 'mo').linhas
             $qtdMoExecutada = Get-QuantidadesMO -LinhasMO $moExecutadaLinhas -CampoOS 'Número OS'
+            $recMoExecutada = Get-RecursosMO -LinhasMO $moExecutadaLinhas -CampoOS 'Número OS'
         }
 
-        $colunasGridPend = @('OSNumero','CodEsquema','COORDENADA UTM X','COORDENADA UTM Y','CodEstado','CodSetor','Localidade','DescEsquema','Observação','Observacao','CodPrioridade','DataCriação','TIPO_EQUIPE_EXEC','Complemento de Localização','CODIGO DA ARVORE','Trecho','protecao')
+        $colunasGridPend = @('Num. Obra','OSNumero','CodEsquema','COORDENADA UTM X','COORDENADA UTM Y','CodEstado','CodSetor','Localidade','DescEsquema','Observação','Observacao','CodPrioridade','DataCriação','TIPO_EQUIPE_EXEC','Complemento de Localização','CODIGO DA ARVORE','Trecho','protecao')
         $gridPendente = (Read-XlsxColunas -Bytes $GridPendenteBytes -Colunas $colunasGridPend `
             -ProgressCallback $ProgressCallback -ProgressLabel 'SGM_PENDENTE' -ProgressFase 'grid').linhas
 
         $novos = New-Object System.Collections.Generic.List[object]
         $resumo = [ordered]@{ pendenteTotal = $gridPendente.Count; pendenteSemMO = 0; pendentePrevistoPorEsquema = 0; pendenteSemCoordenada = 0; pendentePlotadas = 0; pendenteAproximadas = 0; pendenteSemPosicao = 0 }
+        if ($moLinhasInfo) { $resumo['moLinhasGravadas'] = $moLinhasInfo.linhas }
         $acumLat = @{}; $acumLng = @{}
         $semCoordLista = New-Object System.Collections.Generic.List[object]
 
@@ -902,6 +976,7 @@ function Import-PodasPendente {
         $totalGridPend = $gridPendente.Count
         $ultimoProgressoCruzamento = [DateTime]::MinValue
         $tabelaVaoPend = Get-VaoPostesKm
+        $regrasImp = @(Get-RegrasAtivas -Base 'pendente')
         $tabelaEsquemas = Get-TabelaEsquemas
         $resumo['podaLinear'] = 0
         $i = 0
@@ -955,20 +1030,17 @@ function Import-PodasPendente {
             $qReal = Get-QtdOuZero -Dic $qtdMoExecutada -Chave $osChave
 
             # v2.15.4 - PODA LINEAR (ver Import-PodasExecutado): previsto = vao x 15.000 m2
-            if ($tabelaVaoPend -and (Test-EsquemaPodaLinear $linha['DescEsquema'])) {
-                $limVao = Get-LimpezaPodaLinearM2 -TabelaVao $tabelaVaoPend -PosteId (Get-PosteIdDoComplemento $linha['Complemento de Localização'])
-                $tinhaReal = (($qReal.poda + $qReal.limpeza + $qReal.estrutura) -gt 0)
-                $qPrev = @{ poda = 0.0; limpeza = $limVao; estrutura = 0.0 }
-                $qReal = @{ poda = 0.0; limpeza = $(if ($tinhaReal) { $limVao } else { 0.0 }); estrutura = 0.0 }
-                $mo = @{ tipoServico = 'Limpeza de Faixa'; detalhe = $mo.detalhe }
-                $resumo['podaLinear'] = [int]$resumo['podaLinear'] + 1
+            if ($regrasImp.Count -gt 0) {
+                $rr = Invoke-RegrasImportacao -Regras $regrasImp -Linha $linha -QReal $qReal -QPrev $qPrev -Mo $mo -TabelaVao $tabelaVaoPend -PosteId (Get-PosteIdDoComplemento $linha['Complemento de Localização']) -SoPrevisto $false -Resumo $resumo
+                $qReal = $rr.qReal; $qPrev = $rr.qPrev; $mo = $rr.mo
             }
 
             $reg = [ordered]@{
                 id = $osChave; origem = 'SGM'; osPrimaria = $null; idVera = (Get-IdVeraDaGrid $linha)
                 statusOS = (ConvertTo-StatusPendente -CodEstado $linha['CodEstado'])
                 tipoServico = $mo.tipoServico; tipoEquipeNecessaria = $null; posteId = (Get-PosteIdDoComplemento $linha['Complemento de Localização']); tipoEquipeExec = $(if ([string]::IsNullOrWhiteSpace([string]$linha['TIPO_EQUIPE_EXEC'])) { 'Livre' } else { ([string]$linha['TIPO_EQUIPE_EXEC']).Trim() })
-                prioridadeEW = (ConvertTo-PrioridadeEW -CodPrioridade $linha['CodPrioridade'] -QtdPoda ($qPrev.poda + $qReal.poda) -QtdLimpeza ($qPrev.limpeza + $qReal.limpeza) -QtdEstrutura ($qPrev.estrutura + $qReal.estrutura) -TipoServico ([string]$mo.tipoServico) -Tabela $tabelaEW); equipeId = (Get-EquipeExecutoraDoNumeroOS -OsChave $osChave)
+                numObra = (Get-TextoOuNulo $linha['Num. Obra']); recursoMo = $(if ($recMoPendente.ContainsKey($osChave)) { $recMoPendente[$osChave] } elseif ($recMoExecutada.ContainsKey($osChave)) { $recMoExecutada[$osChave] } else { $null })
+                prioridade = (Get-PrioridadeSgm $linha['CodPrioridade']); prioridadeEW = (ConvertTo-PrioridadeEW -CodPrioridade $linha['CodPrioridade'] -QtdPoda ($qPrev.poda + $qReal.poda) -QtdLimpeza ($qPrev.limpeza + $qReal.limpeza) -QtdEstrutura ($qPrev.estrutura + $qReal.estrutura) -TipoServico ([string]$mo.tipoServico) -Tabela $tabelaEW); equipeId = (Get-EquipeExecutoraDoNumeroOS -OsChave $osChave)
                 dataAbertura = (ConvertFrom-SerialExcelParaData -Valor $linha['DataCriação']); dataExecucao = $null
                 ativo = $null; alimentador = $linha['CodSetor']; conjunto = $null; localidade = (Get-NomeLocalidadeSemCodigo -Texto $linha['Localidade']); protecaoId = (Get-TextoOuNulo $linha['protecao']); trecho = (Get-TrechoDaGrid $linha['Trecho'])
                 localizacao = [ordered]@{ lat = $latV; lng = $lngV; fonte = 'GRID_PENDENTE'; aproximada = $false }

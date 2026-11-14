@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\PermissaoController;
 use App\Http\Controllers\Api\PrefeiturasController;
 use App\Http\Controllers\Api\ProgramacaoController;
 use App\Http\Controllers\Api\RankController;
+use App\Http\Controllers\Api\RegrasController;
 use App\Http\Controllers\Api\RegistrosController;
 use App\Http\Controllers\Api\UsuarioController;
 use Illuminate\Support\Facades\Route;
@@ -157,6 +158,15 @@ Route::middleware('auth:api')->group(function () {
     Route::post('/rank', [RankController::class, 'store']);
     Route::get('/rank/{id}', [RankController::class, 'show']);
     Route::delete('/rank/{id}', [RankController::class, 'destroy']);
+
+    // Configuracao > Regras de importacao (v3.33)
+    Route::get('/regras', [RegrasController::class, 'index']);
+    Route::get('/regras/historico', [RegrasController::class, 'historico']);
+    Route::post('/regras/validar', [RegrasController::class, 'validar']);
+    Route::post('/regras/simular', [RegrasController::class, 'simular']);
+    Route::post('/regras', [RegrasController::class, 'store']);
+    Route::put('/regras/{id}', [RegrasController::class, 'update']);
+    Route::delete('/regras/{id}', [RegrasController::class, 'destroy']);
 
     // OS x APP / Reserva Legal
     Route::get('/apprl/indice', [AppRlController::class, 'indice']);

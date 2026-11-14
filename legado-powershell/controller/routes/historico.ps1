@@ -77,7 +77,7 @@ function ConvertTo-HistoricoLinha {
         id = [string]$o.id; statusOS = $o.statusOS; tipoServico = $o.tipoServico
         dataAbertura = $o.dataAbertura; dataExecucao = $o.dataExecucao
         alimentador = $o.alimentador; localidade = $o.localidade; trecho = $o.trecho; posteId = $o.posteId
-        equipeId = $o.equipeId; descEsquema = $o.descEsquema
+        equipeId = $o.equipeId; descEsquema = $o.descEsquema; numObra = $o.numObra; recursoMo = $o.recursoMo
         previstoPoda = $o.previstoPoda; previstoLimpeza = $o.previstoLimpeza; previstoEstrutura = $o.previstoEstrutura
         realizadoPoda = $o.realizadoPoda; realizadoLimpeza = $o.realizadoLimpeza; realizadoEstrutura = $o.realizadoEstrutura
         lat = $lat; lng = $lng; aproximada = $aprox
@@ -108,7 +108,7 @@ function Get-HistoricoMapaPacote {
 function Invoke-HistoricoRoute {
     param($Method, $Segments, $Query, $Body, $Usuario)
 
-    if (-not (Test-Permissao -UsuarioId $Usuario.usuarioId -Modulo "manutencao" -Acao "visualizar")) {
+    if (-not (Test-PermissaoHistorico -UsuarioId $Usuario.usuarioId)) {
         return @{ status = 403; body = @{ erro = "Sem permissão para consultar o histórico de podas." } }
     }
 

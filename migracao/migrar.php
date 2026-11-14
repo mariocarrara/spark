@@ -162,14 +162,19 @@ copiar($pdo, 'usuarios', ['id','nome','email','senha_hash','senha_legada','statu
 }
 $ids = array_flip($pdo->query('SELECT id FROM usuarios')->fetchAll(PDO::FETCH_COLUMN));
 if (parte($pdo, 'permissoes.json', 'permissoes'))
-copiar($pdo, 'permissoes', ['usuario_id','modulo','acao'],
+copiar($pdo, 'permissoes', ['usuario_id','modulo','acao','valor'],
   (function () use ($model, $ids) {
     foreach (lerJson("$model/permissoes.json") ?? [] as $p) {
         if (!isset($ids[$p['usuarioId']])) continue;
         $mz = $p['matriz'] ?? [];
         // front legado (alertasVisivel): sem alertas.visualizar booleano, segue manutencao.visualizar
         if (!isset($mz['alertas']['visualizar']) || !is_bool($mz['alertas']['visualizar'])) $mz['alertas']['visualizar'] = !empty($mz['manutencao']['visualizar']);
-        foreach ($mz as $mod => $acoes) foreach ((array)$acoes as $acao => $ok) if ($ok) yield [$p['usuarioId'], $mod, $acao];
+        // v3.26: nas caixas "(menu)" desmarcada (false) e diferente de nunca mexida (sem linha)
+        $menu = ['geral', 'historico', 'medicao', 'regras', 'importacao'];
+        foreach ($mz as $mod => $acoes) foreach ((array)$acoes as $acao => $ok) {
+            if ($ok) yield [$p['usuarioId'], $mod, $acao, true];
+            elseif ($ok === false && $acao === 'visualizar' && in_array($mod, $menu, true)) yield [$p['usuarioId'], $mod, $acao, false];
+        }
     } })());
 if (parte($pdo, 'solicitacoes_cadastro.json', 'solicitacoes_cadastro'))
 copiar($pdo, 'solicitacoes_cadastro', ['id','email','status','criado_em','decidido_em','decidido_por'],
@@ -338,10 +343,18 @@ copiar($pdo, 'exclusoes', ['base','chave','em','por'],
       if (empty($e['base']) || !isset($e['chave'])) continue;
       yield [$e['base'], (string)$e['chave'], nn($e['em'] ?? null), nn($e['por'] ?? null)];
   } })());
+// v3.33 - regras de importacao editaveis (e o historico delas)
+if (parte($pdo, 'regras.json', 'regras')) {
+    copiar($pdo, 'regras', ['id','ordem','dados'], (function () use ($model) { $v = []; foreach (lerJson("$model/regras.json") ?? [] as $r) { if (empty($r['id']) || isset($v[$r['id']])) continue; $v[$r['id']] = 1; yield [$r['id'], (int)($r['ordem'] ?? 0), $r]; } })());
+    $pdo->exec("INSERT INTO configuracoes (chave, valor) VALUES ('regras_semeadas', 'true') ON CONFLICT (chave) DO NOTHING");
+}
+if (parte($pdo, 'regras_historico.json', 'regras_historico'))
+copiar($pdo, 'regras_historico', ['em','usuario','regra_id','nome','acao','antes','depois'],
+  (function () use ($model) { foreach (lerJson("$model/regras_historico.json") ?? [] as $h) yield [nn($h['em'] ?? null) ?? date('c'), nn($h['usuario'] ?? null), nn($h['regraId'] ?? null), nn($h['nome'] ?? null), nn($h['acao'] ?? null), $h['antes'] ?? null, $h['depois'] ?? null]; })());
 // Rede de seguranca: todo .json que este script NAO leu acima vai inteiro para legado_bruto (nada se perde).
 $lidos = ['ajuda_faq','ajustes_os','ajustes_os_log','alertas_config','alertas_tratados','alimentador_polo','app_rl_config','conjuntos','equipes','esquemas',
   'exclusoes','feriados','historico_podas_meta','importacoes_log','indisponibilidades','justificativas','listas_cadastro','manutencao_os','metas','nix','nix_meta',
-  'permissoes','prefeituras_config','prioridade_ew','programacao','programacao_log','protecao','protecao_alim','rank_listas','solicitacoes_cadastro','usuarios','vao','vera'];
+  'permissoes','prefeituras_config','prioridade_ew','programacao','programacao_log','protecao','protecao_alim','rank_listas','solicitacoes_cadastro','usuarios','vao','vera','regras','regras_historico'];
 $brutoSt = $pdo->prepare('INSERT INTO legado_bruto (entidade, dados) VALUES (?, ?::jsonb) ON CONFLICT (entidade) DO UPDATE SET dados = EXCLUDED.dados, importado_em = now()');   // so a entidade que veio
 $nBruto = 0;
 foreach (glob("$model/*.json") ?: [] as $arq) {

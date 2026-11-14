@@ -66,7 +66,21 @@ class Usuario extends Model implements AuthenticatableContract
             return true;
         }
 
-        return $this->permissoes()->where('modulo', $modulo)->where('acao', $acao)->exists();
+        return $this->permissoes()->where('modulo', $modulo)->where('acao', $acao)->where('valor', true)->exists();
+    }
+
+    /** v3.26 - Historico de Podas (Test-PermissaoHistorico): admin sempre; caixa "Historico (menu)" marcada/desmarcada vale; sem escolha, segue Manutencao. */
+    public function podeHistorico(): bool
+    {
+        if (! $this->ativo()) {
+            return false;
+        }
+        if ($this->perfil_base === self::ADMIN) {
+            return true;
+        }
+        $v = $this->permissoes()->where('modulo', 'historico')->where('acao', 'visualizar')->value('valor');
+
+        return $v === null ? $this->pode('manutencao', 'visualizar') : (bool) $v;
     }
 
     /** Formato que o front legado espera em /auth/login e /auth/me. */

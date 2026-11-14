@@ -3,7 +3,7 @@
 Responda ao Mario em portugues. Ele e gestor no Grupo Energisa, entende PHP/seguranca, nao e dev em tempo integral: explique curto, entregue pronto.
 
 ## O que e
-Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alertas, Pontos Nix, APP/RL, historico por plano. Versao atual do legado: **v3.18.2**.
+Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alertas, Pontos Nix, APP/RL, historico por plano. Versao atual do legado: **v3.33.1** (14/11/2026: a v3.33.0 do Mario, feita a partir da 3.16.0, foi juntada em 3 vias com o front deste repo: base = Downloads/spark-v3.16.0-completo; conflitos so no cadastro com senha propria -> ficou a versao do Mario; controller/ = 3.33 do Mario inteiro).
 
 ## Estado
 - `legado-powershell/`: PowerShell 5.1 (HttpListener) com `controller/server.ps1`, `routes/*.ps1`, `lib/*.ps1`; dados em JSON em `model/` (`Read-JsonModel`/`Write-JsonModel`); front vanilla JS em `view/js` (app.js gigante). PowerShell NUNCA foi executado no ambiente do Claude: so revisado. Arquivos com BOM + LF.
@@ -32,6 +32,11 @@ Sistema de programacao de podas/manutencao, mapa (Leaflet), produtividade, alert
 - Repositorio Git na raiz (branch main, `core.autocrlf=false`, `.gitattributes` forca LF). Dados de exemplo do front anonimizados (exemplo.com.br).
 - Deploy: `Dockerfile` (php:8.3-apache, raiz php/public, porta $PORT) + `render.yaml` (Postgres 16 basic-1gb + web standard 2 GB, regiao virginia) + `docker/entrypoint.sh` (config/route cache + `spark:instalar-schema`, que so cria tabelas se o banco estiver vazio). `trustProxies(*)` ligado: sem ele o bloqueio por IP trancaria todos atras do proxy. Imagem testada localmente contra banco vazio (09/11/2026).
 - APP_KEY no painel do Render (`php artisan key:generate --show`); 1o admin pelo Shell do Render (`spark:admin-semente`).
+
+## v3.33 (14/11/2026)
+- REGRAS DE IMPORTACAO portadas: Services/Regras (parser/avaliador de formulas, condicoes, regras padrao de Poda linear) + RegrasController (`/regras` GET/POST/PUT/DELETE, `/regras/validar`, `/regras/simular`, `/regras/historico`; tabelas `regras` (id, ordem, dados jsonb) e `regras_historico`; semeia as 2 padrao na 1a vez, marca configuracoes.regras_semeadas). ImportadorGrids usa Regras::naImportacao no lugar da Poda linear fixa; [Vão (km)] = null se vao_postes vazio (regra ignorada, resumo avisa). CONFERIDO rodando o Regras.ps1 original no PowerShell local: 42 casos (formulas, erros, condicoes, regras padrao com/sem vao) IDENTICOS.
+- DIAGNOSTICO dos numeros do print (online x local): Poda linear online nao aplicada porque `vao_postes` (Vao POR POSTE) esta vazio no Render; a aba Vao da Gestao de Bases grava so `vao` (por protecao). Falta portar POST /importacao/vao|protecao|vera (Excel grande) e depois REIMPORTAR as grids.
+- Permissoes v3.26: modulos novos geral, historico, medicao, regras, importacao (config spark.modulos_menu); `permissoes.valor` (false = caixa de menu desmarcada de proposito; sem linha = padrao); Usuario::podeHistorico (admin sempre; sem escolha segue manutencao).
 
 ## Escopo por municipio (prefeituras)
 Prototipo em `migracao/escopo_prefeitura.sql` + `teste_rls.sql` (9 testes passam): role `spark_app` sem BYPASSRLS, por requisicao `SET LOCAL spark.escopo='interno'|'municipios'` e `spark.municipios='ibge1,ibge2'`, default-deny, view `os_portal` (security_invoker) com lista branca de campos. Municipio vem do codigo IBGE do poste ou do poste mais proximo ate 300 m. Pendente: poligonos IBGE, RLS nas demais tabelas, tela admin usuario x municipio. Norma ANEEL: REN 1.137/2025 (manejo vegetal) encontrada; Mario falou "1.133", confirmar. Compartilhamento exige convenio + LGPD.

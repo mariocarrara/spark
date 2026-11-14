@@ -403,6 +403,8 @@ function mapOsRaw(o){
     realizadoLimpeza: (typeof o.realizadoLimpeza === "number") ? o.realizadoLimpeza : null,
     realizadoEstrutura: (typeof o.realizadoEstrutura === "number") ? o.realizadoEstrutura : null,
     observacao: o.observacao || "",
+    numObra: o.numObra || "", recursoMo: o.recursoMo || "",   // v3.22.0 - Num. Obra (grids) e DE-PARA RECURSOS.MO 1 (MO)
+    prioridade: o.prioridade || "",     // v3.21.0 - criticidade no SGM (ALTA, URGENTE, EMERGENCIAL...)
     descEsquema: o.descEsquema || "",   // v3.10.5 - descrição do esquema (SGM); antes ia em "observacao"
     previstoPorEsquema: !!o.previstoPorEsquema,
     statusBase: o.statusBase || null,

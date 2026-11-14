@@ -27,7 +27,7 @@ class HistoricoController extends Controller
 {
     private function ver(Request $r): ?JsonResponse
     {
-        return $r->user()->pode('manutencao', 'visualizar') ? null
+        return $r->user()->podeHistorico() ? null
             : response()->json(['erro' => 'Sem permissão para consultar o histórico de podas.'], 403);
     }
 

@@ -44,8 +44,8 @@ class Matriz
     public static function ler(string $usuarioId): array
     {
         $m = [];
-        foreach (DB::table('permissoes')->where('usuario_id', $usuarioId)->get(['modulo', 'acao']) as $p) {
-            $m[$p->modulo][$p->acao] = true;
+        foreach (DB::table('permissoes')->where('usuario_id', $usuarioId)->get(['modulo', 'acao', 'valor']) as $p) {
+            $m[$p->modulo][$p->acao] = (bool) $p->valor;   // false so nas caixas de menu desmarcadas de proposito (v3.26)
         }
         $m['alertas']['visualizar'] = ! empty($m['alertas']['visualizar']);
 
@@ -61,9 +61,8 @@ class Matriz
             $linhas = [];
             foreach ($m as $mod => $acoes) {
                 foreach ($acoes as $acao => $ok) {
-                    if ($ok) {
-                        $linhas[] = ['usuario_id' => $usuarioId, 'modulo' => $mod, 'acao' => $acao];
-                    }
+                    // false so chega aqui nas caixas de menu (desmarcada de proposito)
+                    $linhas[] = ['usuario_id' => $usuarioId, 'modulo' => $mod, 'acao' => $acao, 'valor' => (bool) $ok];
                 }
             }
             if ($linhas) {
@@ -85,8 +84,13 @@ class Matriz
                 continue;
             }
             foreach ($lista as $acao => $ok) {
-                if (in_array($acao, $acoes, true) && self::verdadeiro($ok)) {
+                if (! in_array($acao, $acoes, true)) {
+                    continue;
+                }
+                if (self::verdadeiro($ok)) {
                     $m[$mod][$acao] = true;
+                } elseif ($acao === 'visualizar' && in_array($mod, config('spark.modulos_menu'), true) && ($ok === false || $ok === 0 || $ok === '0' || $ok === 'false')) {
+                    $m[$mod][$acao] = false;   // v3.26: caixa de menu desmarcada de proposito (vale ate para administrador no front)
                 }
             }
         }

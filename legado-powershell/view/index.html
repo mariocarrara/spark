@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#12244A">
 <link rel="stylesheet" href="css/vendor/leaflet.css" />
 <link rel="stylesheet" href="css/vendor/MarkerCluster.css" />
-<link rel="stylesheet" href="css/styles.css?v=3.18.2">
+<link rel="stylesheet" href="css/styles.css?v=3.33.1">
 <script>try{ if(localStorage.getItem("spark_tema")==="dark") document.documentElement.setAttribute("data-tema","dark"); }catch(e){}</script>
 </head>
 <body>
@@ -59,23 +59,25 @@
     </form>
     <form id="solicitarForm" class="hidden" onsubmit="return onSolicitarCadastro(event)">
       <h2 style="margin-top:2px;">Solicitar cadastro</h2>
-      <p class="sub">Informe seus dados e escolha sua senha. Um administrador vai analisar o pedido e liberar o seu acesso; depois é só entrar com este e-mail e esta senha.</p>
+      <p class="sub">Informe seu e-mail e escolha uma senha. Um administrador vai analisar o pedido e liberar o seu acesso.</p>
       <div id="solicitarMsg"></div>
-      <div class="field">
-        <label>Nome</label>
-        <input type="text" id="solicitarNome" autocomplete="name" maxlength="120" placeholder="Seu nome completo">
-      </div>
       <div class="field">
         <label>E-mail</label>
         <input type="email" id="solicitarEmail" autocomplete="email" required placeholder="voce@energisa.com.br">
       </div>
       <div class="field">
+        <label>Nome</label>
+        <input type="text" id="solicitarNome" autocomplete="name" maxlength="80" placeholder="Como você quer aparecer no sistema">
+      </div>
+      <div class="field">
         <label>Senha</label>
-        <input type="password" id="solicitarSenha" autocomplete="new-password" required minlength="8" maxlength="72" placeholder="mínimo 8 caracteres">
+        <input type="password" id="solicitarSenha" autocomplete="new-password" required minlength="8" oninput="senhaForcaAtualizar()" placeholder="mínimo 8 caracteres, com letra e número">
+        <div class="senha-forca" aria-live="polite"><div class="senha-forca-barra"><i id="senhaForcaBarra"></i></div><small id="senhaForcaTxt">&nbsp;</small></div>
       </div>
       <div class="field">
         <label>Repita a senha</label>
-        <input type="password" id="solicitarSenha2" autocomplete="new-password" required minlength="8" maxlength="72">
+        <input type="password" id="solicitarSenha2" autocomplete="new-password" required oninput="senhaForcaAtualizar()">
+        <small id="senhaConfTxt" class="senha-conf">&nbsp;</small>
       </div>
       <button type="submit" class="btn btn-primary" id="solicitarBtn">Enviar pedido</button>
       <button type="button" class="btn btn-ghost login-solicitar" onclick="voltarParaLogin()">Voltar</button>
@@ -144,17 +146,19 @@
 <script src="js/vendor/leaflet.markercluster.js"></script>
 <script src="js/vendor/leaflet-heat.js"></script>
 <script src="js/vendor/xlsx.full.min.js"></script>
-<script src="js/api.js?v=3.18.2"></script>
-<script src="js/mapacache.js?v=3.18.2"></script>
-<script src="js/nix.js?v=3.18.2"></script>
-<script src="js/historico.js?v=3.18.2"></script>
-<script src="js/apprl.js?v=3.18.2"></script>
-<script src="js/rank.js?v=3.18.2"></script>
-<script src="js/rank-analise.js?v=3.18.2"></script>
-<script src="js/app.js?v=3.18.2"></script>
-<script src="js/boletim.js?v=3.18.2"></script>
-<script src="js/ajuda.js?v=3.18.2"></script>
-<script src="js/ux.js?v=3.18.2"></script>
+<script src="js/api.js?v=3.33.1"></script>
+<script src="js/mapacache.js?v=3.33.1"></script>
+<script src="js/nix.js?v=3.33.1"></script>
+<script src="js/historico.js?v=3.33.1"></script>
+<script src="js/apprl.js?v=3.33.1"></script>
+<script src="js/rank.js?v=3.33.1"></script>
+<script src="js/rank-analise.js?v=3.33.1"></script>
+<script src="js/medicao.js?v=3.33.1"></script>
+<script src="js/regras.js?v=3.33.1"></script>
+<script src="js/app.js?v=3.33.1"></script>
+<script src="js/boletim.js?v=3.33.1"></script>
+<script src="js/ajuda.js?v=3.33.1"></script>
+<script src="js/ux.js?v=3.33.1"></script>
 <script>
   // pequeno indicador visual de conexão com o Controller (não faz parte do
   // fluxo de dados em si — só avisa o usuário se está vendo dados reais ou

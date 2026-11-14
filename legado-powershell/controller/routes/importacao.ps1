@@ -218,6 +218,11 @@ function Invoke-ResetarTodasAsBases {
     foreach ($entidade in $entidades) {
         Write-JsonModel -Entity $entidade -Data @()
     }
+    # v3.23.0 - linhas da MO (arquivos próprios, formato objeto): remove junto com as demais bases
+    foreach ($arqMo in @("mo_linhas_executada", "mo_linhas_pendente")) {
+        $pMo = Get-EntityPath -Entity $arqMo
+        if (Test-Path $pMo) { Remove-Item $pMo -Force }
+    }
     Write-JsonModel -Entity "logistica_vinculos" -Data @{ vinculos = @{}; estatisticas = @{} }
 
     $geoRoot = Join-Path $PSScriptRoot "..\..\geo"
