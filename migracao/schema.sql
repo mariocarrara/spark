@@ -409,6 +409,9 @@ CREATE TABLE postes (                                -- PONNOT (~760 mil)
 CREATE INDEX postes_loc_gix ON postes USING GIST (loc);
 CREATE INDEX postes_tipo_ix ON postes (tipo);
 
+-- nomes operativos (Excel do Smallworld: Id, Name, Alias), por camada; ficam mesmo se o DBF for reimportado
+CREATE TABLE equip_nomes (camada TEXT NOT NULL, cod_id TEXT NOT NULL, nome TEXT, alias TEXT, PRIMARY KEY (camada, cod_id));
+
 CREATE TABLE equipamentos (                          -- trafos, protecoes, capacitores, reguladores
   camada  TEXT NOT NULL,                             -- trafos | protecoes | capacitores | reguladores
   cod_id  TEXT NOT NULL,

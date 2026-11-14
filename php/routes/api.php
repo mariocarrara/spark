@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AjudaController;
 use App\Http\Controllers\Api\AjusteController;
 use App\Http\Controllers\Api\AlertasController;
 use App\Http\Controllers\Api\AppRlController;
+use App\Http\Controllers\Api\AtivosController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CadastroController;
 use App\Http\Controllers\Api\CamadasController;
@@ -103,6 +104,10 @@ Route::middleware('auth:api')->group(function () {
     Route::get('/equip/lista', [CamadasController::class, 'equipLista']);
     Route::get('/equip/cadastro', [CamadasController::class, 'equipCadastro']);
     Route::get('/equip/conferencia', [CamadasController::class, 'equipConferencia']);
+    Route::delete('/postes', [AtivosController::class, 'apagarPostes']);
+    Route::post('/postes/aplicar', [AtivosController::class, 'aplicar']);
+    Route::delete('/equip', [AtivosController::class, 'apagarEquip']);
+    Route::post('/importacao/resetar-tudo', [AtivosController::class, 'resetarTudo']);
     Route::get('/manutencao/localidades-mapa', [ManutencaoController::class, 'localidadesMapa']);
     Route::get('/manutencao/camadas', [MapaRedeController::class, 'camadas']);
     Route::get('/manutencao/km-rede-resumo', [MapaRedeController::class, 'kmRedeResumo']);

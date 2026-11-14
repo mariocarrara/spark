@@ -295,9 +295,13 @@ foreach (['trafos', 'protecoes', 'capacitores', 'reguladores'] as $camada) {
     if (!tem("equip_$camada.tsv")) { $pulados[] = "equip_$camada.tsv"; continue; }
     $pdo->prepare('DELETE FROM equipamentos WHERE camada = ?')->execute([$camada]);
     $nomes = [];
-    foreach (tsv("$model/equip_nomes_$camada.tsv") as $c) $nomes[$c[0]] = nn($c[1] ?? null);
+    foreach (tsv("$model/equip_nomes_$camada.tsv") as $c) $nomes[$c[0]] = [nn($c[1] ?? null), nn($c[2] ?? null)];   // Name, Alias
+    if (tem("equip_nomes_$camada.tsv")) {
+        $pdo->prepare('DELETE FROM equip_nomes WHERE camada = ?')->execute([$camada]);
+        copiar($pdo, 'equip_nomes', ['camada','cod_id','nome','alias'], (function () use ($nomes, $camada) { foreach ($nomes as $id => [$n, $a]) yield [$camada, (string)$id, $n, $a]; })(), "equip_nomes $camada");
+    }
     copiar($pdo, 'equipamentos', ['camada','cod_id','poste','loc','ctmt','conj','v0','v1','v2','v3','v4','nome_operativo'],
-      (function () use ($model, $camada, $nomes) { $v = []; foreach (tsv("$model/equip_$camada.tsv") as $c) { if (isset($v[$c[0]])) continue; $v[$c[0]] = 1; yield [$camada, $c[0], nn($c[1]), pt($c[2] ?? null, $c[3] ?? null), nn($c[4] ?? null), nn($c[5] ?? null), nn($c[6] ?? null), nn($c[7] ?? null), nn($c[8] ?? null), nn($c[9] ?? null), nn($c[10] ?? null), $nomes[$c[0]] ?? null]; } })(), "equipamentos $camada");
+      (function () use ($model, $camada, $nomes) { $v = []; foreach (tsv("$model/equip_$camada.tsv") as $c) { if (isset($v[$c[0]])) continue; $v[$c[0]] = 1; yield [$camada, $c[0], nn($c[1]), pt($c[2] ?? null, $c[3] ?? null), nn($c[4] ?? null), nn($c[5] ?? null), nn($c[6] ?? null), nn($c[7] ?? null), nn($c[8] ?? null), nn($c[9] ?? null), nn($c[10] ?? null), isset($nomes[$c[0]]) ? ($nomes[$c[0]][0] ?? $nomes[$c[0]][1]) : null]; } })(), "equipamentos $camada");
 }
 
 // ---------------- rank e nix ----------------

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\AppRl;
 use App\Services\Auditoria;
+use App\Services\Importacao\ImportadorAtivos;
 use App\Services\Importacao\ImportadorRede;
 use App\Services\RedeGeo;
 use Illuminate\Http\Request;
@@ -18,7 +19,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * ({"tipo":"progresso"...} ... {"tipo":"final", camada, alimentadores, trechos, rejeitados, errosDetalhe, avisoProjecao, log}).
  *   rede_media_tensao | rede_baixa_tensao | rede_alta_tensao: .shp + .dbf (+ .prj), soltos ou num .zip
  *   reserva_legal | app: um ou mais .kmz (um por alimentador); depois recalcula o OS x APP/RL
- * Ainda NAO portado: camada "postes" (PONNOT) e "equipamentos" (DBF da BDGD) — a base que veio do sistema antigo continua valendo.
+ *   postes: PONNOT (.shp de pontos + .dbf) substitui a base e reaplica a posicao das OS; equipamentos: DBFs UN*MT e/ou Excel de nomes (ImportadorAtivos)
  */
 class ImportacaoRedeController extends Controller
 {
@@ -60,13 +61,7 @@ class ImportacaoRedeController extends Controller
 
                     return;
                 }
-                if (in_array($camada, ['postes', 'equipamentos'], true)) {
-                    $linha(['tipo' => 'erro', 'mensagem' => 'A importação de '.($camada === 'postes' ? 'Ativos (PONNOT)' : 'Equipamentos (BDGD)')
-                        .' ainda não foi migrada para o sistema novo. A base que veio do sistema antigo continua valendo.']);
-
-                    return;
-                }
-                if (! isset(RedeGeo::CAMADAS[$camada])) {
+                if (! in_array($camada, ['postes', 'equipamentos'], true) && ! isset(RedeGeo::CAMADAS[$camada])) {
                     $linha(['tipo' => 'erro', 'mensagem' => "Camada de rede desconhecida: {$camada}"]);
 
                     return;
@@ -77,10 +72,27 @@ class ImportacaoRedeController extends Controller
                     return;
                 }
                 $linha(['tipo' => 'progresso', 'fase' => 'recebido', 'percentual' => 1]);
-                $imp = new ImportadorRede(fn (array $p) => $linha(['tipo' => 'progresso'] + $p));
+                $avisar = fn (array $p) => $linha(['tipo' => 'progresso'] + $p);
+                $imp = new ImportadorRede($avisar);
                 $poligono = in_array($camada, ['reserva_legal', 'app'], true);
                 try {
-                    $res = $poligono ? $imp->kmz($camada, $arquivos) : $imp->shapefile($camada, $arquivos);
+                    if ($camada === 'postes') {
+                        // PONNOT substitui a base de postes e reaplica VERA > XY > Poste > cidade nas OS ja gravadas
+                        $ativos = new ImportadorAtivos($avisar);
+                        $rp = $ativos->postes($arquivos, $eu->id);
+                        $aplic = ImportadorAtivos::aplicarPosicao($avisar);
+                        $res = ['alimentadores' => 0, 'trechos' => $rp['total'], 'rejeitados' => $rp['semGeometria'], 'errosDetalhe' => null, 'avisoProjecao' => null,
+                            'particionado' => false, 'postes' => $rp, 'aplicadoNasOS' => $aplic];
+                        $poligono = DB::table('rede_feicoes')->whereIn('camada', ['app', 'rl'])->exists();   // as posicoes mudaram: refaz o APP/RL
+                        $res['alimentadores'] = $poligono ? 1 : 0;
+                    } elseif ($camada === 'equipamentos') {
+                        $re = (new ImportadorAtivos($avisar))->equipamentos($arquivos, $eu->id);
+                        $tot = array_sum(array_column($re['camadas'], 'total')) + array_sum(array_column($re['nomes'], 'lidos'));
+                        $rej = array_sum(array_column($re['camadas'], 'semPosicao')) + array_sum(array_column($re['nomes'], 'semChave'));
+                        $res = ['alimentadores' => 0, 'trechos' => $tot, 'rejeitados' => $rej, 'errosDetalhe' => null, 'avisoProjecao' => null, 'particionado' => false, 'equipamentos' => $re];
+                    } else {
+                        $res = $poligono ? $imp->kmz($camada, $arquivos) : $imp->shapefile($camada, $arquivos);
+                    }
                 } catch (\Throwable $e) {
                     report($e);
                     $linha(['tipo' => 'erro', 'mensagem' => $e->getMessage()]);
@@ -97,6 +109,9 @@ class ImportacaoRedeController extends Controller
                 if ($poligono && $res['alimentadores'] > 0) {
                     $linha(['tipo' => 'progresso', 'fase' => 'gravando', 'arquivo' => 'medindo a distancia das OS ate APP e RL', 'percentual' => 99]);
                     AppRl::recalcular();
+                }
+                if ($camada === 'postes') {
+                    $res['alimentadores'] = 0;
                 }
                 $linha(['tipo' => 'final', 'camada' => $camada] + $res + ['postes' => null, 'equipamentos' => null, 'aplicadoNasOS' => null, 'log' => $log]);
             } catch (\Throwable $e) {
