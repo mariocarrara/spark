@@ -9208,7 +9208,7 @@ function viewImportacao(){
     return `<div class="card"><div class="empty">${ic("empty")}<div>Você não tem permissão pra importar nenhuma base. Fale com um administrador se precisar de acesso.</div></div></div>`;
   }
   return `
-  <div class="grid" style="grid-template-columns:1.1fr 1fr; gap:14px;">
+  <div class="grid imp-colunas" style="grid-template-columns:1.1fr 1fr; gap:14px;">
     <div class="card">
       <h3>1. Escolha a base</h3>
       <div class="field" style="margin-bottom:14px;">

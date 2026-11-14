@@ -1434,3 +1434,14 @@ button, .btn, .tab, .nav-item, .mapa-fab, [role="button"]{ touch-action:manipula
 .tabs{ max-width:100%; overflow-x:auto; scrollbar-width:thin; }
 .tab{ white-space:nowrap; flex:none; }
 @media (min-width:761px){ .tabs{ flex-wrap:wrap; overflow:visible; } }
+
+/* v3.33.4 - Produtividade: as 3 linhas do cabecalho (semana / dia / Exec-Meta-%) eram todas sticky em top:0
+   e uma cobria a outra - a semana e o dia sumiam ao rolar. Agora cada linha tem altura fixa e fica
+   empilhada embaixo da anterior, entao o cabecalho inteiro desce junto e o dia continua a vista. */
+.prod-matrix thead th{ height:37px; padding-top:0; padding-bottom:0; line-height:36px; box-sizing:border-box; border-bottom:0; box-shadow:inset 0 -1px 0 var(--border); }
+.prod-matrix thead tr:nth-child(2) th{ top:37px; }
+.prod-matrix thead tr:nth-child(3) th{ top:74px; box-shadow:inset 0 -1px 0 var(--border-hi); }
+.prod-matrix thead tr:first-child th:first-child{ line-height:1.35; }
+
+/* Importacao de Bases no celular: os dois cartoes um embaixo do outro */
+@media (max-width:760px){ .imp-colunas{ grid-template-columns:1fr !important; } }
